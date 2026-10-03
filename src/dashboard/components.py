@@ -13,7 +13,7 @@ from src.contracts.serialization import to_json
 from src.contracts.types import ACTION_NAMES, ActionAssumptions, AnalysisRequest, SimulationResult
 from src.integration.services import Services
 
-from . import charts, eda, trainer
+from . import charts, eda, explain, trainer
 from .presentation import (
     ACTION_HELP,
     ACTION_LABELS,
@@ -84,6 +84,7 @@ def company_context(state: DashboardState, dark: bool) -> None:
     st.subheader("Exploratory Data Analysis and Model Selection")
     eda.feature_explorer()
     trainer.model_trainer()
+    explain.shap_explorer()
     baseline = state.baseline
     if baseline is None:
         if state.baseline_error:
