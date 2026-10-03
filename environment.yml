@@ -1,0 +1,24 @@
+name: adahack
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  # Core data handling
+  - numpy
+  - pandas
+  - scipy
+  # Visualisation
+  - matplotlib
+  - seaborn
+  - plotly
+  # Machine learning & stats
+  - scikit-learn
+  - statsmodels
+  # Notebooks
+  - jupyterlab
+  - ipykernel
+  # Utilities
+  - requests
+  - python-dotenv
+  - tqdm
