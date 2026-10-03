@@ -32,3 +32,4 @@ dependencies:
       # WS2 multi-objective optimization; 0.6.2+ seeds a local Generator, never the global NumPy RNG
       - pymoo>=0.6.2
       - streamlit
+      - shap==0.51.0

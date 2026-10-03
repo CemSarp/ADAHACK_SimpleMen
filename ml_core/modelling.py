@@ -41,7 +41,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import os
 import sys
 import time
 import warnings
@@ -77,17 +76,6 @@ except ImportError:
     Prophet = None
 
 logger = logging.getLogger(__name__)
-
-# Benign: RandomForestRegressor(n_jobs=-1) dispatches through joblib, whose
-# workers cannot receive sklearn's thread-local config. It does not affect
-# results. It is silenced at import time (not only under ``__main__``) and also
-# through PYTHONWARNINGS, because joblib worker processes start with empty
-# warning filters and only inherit the environment.
-warnings.filterwarnings("ignore", category=UserWarning, module=r"sklearn\.utils\.parallel")
-warnings.filterwarnings("ignore", message=".*sklearn.utils.parallel.delayed.*")
-_WORKER_FILTER = "ignore::UserWarning:sklearn.utils.parallel"
-if _WORKER_FILTER not in os.environ.get("PYTHONWARNINGS", ""):
-    os.environ["PYTHONWARNINGS"] = ",".join(filter(None, [os.environ.get("PYTHONWARNINGS"), _WORKER_FILTER]))
 
 
 @dataclass(frozen=True)
@@ -1065,10 +1053,12 @@ class ForecastingPipeline:
                 spec, cfg.horizon)
         else:
             logger.warning("lightgbm not installed; skipping LightGBM.")
+        # n_jobs=1 on purpose: scikit-learn's joblib threads wipe the shared warning filters and
+        # flood the log with "delayed/Parallel" warnings.
         models["RandomForest"] = lambda: DirectTreeForecaster(
             "RandomForest", lambda: RandomForestRegressor(
                 n_estimators=300, min_samples_leaf=2, max_features=0.6,
-                random_state=seed, n_jobs=-1), spec, cfg.horizon)
+                random_state=seed, n_jobs=1), spec, cfg.horizon)
         if Prophet is not None:
             models["Prophet"] = lambda: ProphetForecaster(spec, cfg.horizon, cfg.prophet_window)
         else:
