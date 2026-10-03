@@ -13,7 +13,7 @@ from src.contracts.serialization import to_json
 from src.contracts.types import ACTION_NAMES, ActionAssumptions, AnalysisRequest, SimulationResult
 from src.integration.services import Services
 
-from . import charts
+from . import charts, eda
 from .presentation import (
     ACTION_HELP,
     ACTION_LABELS,
@@ -35,53 +35,9 @@ from .state import (
     slider_key,
 )
 
-KIND_LABELS = {"fixture": "fixture", "behavioral-mock": "behavioral mock", "real": "real", "custom": "custom"}
-
-
 # --------------------------------------------------------------------------- #
 # Provenance
 # --------------------------------------------------------------------------- #
-
-
-def data_provenance_line(baseline: Any) -> None:
-    """Data provenance is separate from implementation provenance: a real pipeline may run on synthetic data."""
-    if baseline is None:
-        return
-    kind = baseline.data_kind
-    label = {"synthetic": ":orange-badge[SYNTHETIC DATA]", "reported": ":green-badge[REPORTED DATA]",
-             "interpolated": ":orange-badge[INTERPOLATED DATA]"}.get(kind, kind)
-    st.caption(f"{label} Input company `{baseline.company_id}` · baseline `{baseline.baseline_id}` · model "
-               f"`{baseline.model_id}` · data kind **{kind}**; numbers describe this {kind} dataset, not a real company.")
-
-
-def provenance_banner(services: Services) -> None:
-    mocked = [(slot, info) for slot, info in services.providers.items() if info.is_mock]
-    real = [slot for slot, info in services.providers.items() if not info.is_mock]
-    if mocked and real:
-        parts = ", ".join(f"**{slot}** ({KIND_LABELS.get(info.kind, info.kind)})" for slot, info in mocked)
-        st.warning(
-            f"**PARTIALLY MOCKED — {services.mode} mode.** Real providers: {', '.join(f'**{s}**' for s in real)}. "
-            f"Mocked: {parts}. Every result depends on the mocked inputs, so the analysis as a whole is not real; "
-            "this is not the accepted all-real C4 MVP.",
-            icon="⚠️",
-        )
-    elif mocked:
-        parts = ", ".join(f"**{slot}** ({KIND_LABELS.get(info.kind, info.kind)})" for slot, info in mocked)
-        st.warning(
-            f"**MOCK OUTPUT — {services.mode} mode.** These results come from development doubles, "
-            f"not accepted WS1–WS3 models: {parts}. Numbers show the interface and flow only; "
-            "this is not the accepted all-real C4 MVP.",
-            icon="⚠️",
-        )
-    else:
-        st.success(f"All bound computational providers are real ({services.mode} mode). Data provenance is shown "
-                   "separately below; team acceptance of the all-real milestone (C4) is not recorded in the app.",
-                   icon="✅")
-    st.caption(services.provenance_summary())
-
-
-def mock_tag(is_mock: bool) -> str:
-    return " · :orange-badge[MOCK]" if is_mock else ""
 
 
 def constraint_failures(check: Any) -> list[str]:
@@ -125,6 +81,8 @@ def kpi_row(items: list[dict[str, Any]]) -> None:
 
 
 def company_context(state: DashboardState, dark: bool) -> None:
+    st.subheader("Exploratory Data Analysis and Model Selection")
+    eda.feature_explorer()
     baseline = state.baseline
     if baseline is None:
         if state.baseline_error:
@@ -132,8 +90,7 @@ def company_context(state: DashboardState, dark: bool) -> None:
             error_box(e.kind, e.error_type, e.message)
         return
     history = state.history
-    is_mock = baseline.provenance.is_mock
-    st.subheader("Company context and baseline" + mock_tag(is_mock))
+    st.markdown("#### Baseline forecast")
     st.caption(
         f"Company `{baseline.company_id}` · data kind **{baseline.data_kind}** · scope 2 method "
         f"`{baseline.scope2_method}` · model `{baseline.model_id}` · driver policy `{baseline.driver_policy_id}` · "
@@ -145,9 +102,9 @@ def company_context(state: DashboardState, dark: bool) -> None:
         window = period_label(trailing["timestamp"])
         tiles += [
             {"label": "Emissions, trailing 12 months (history)", "value": tonnes(float(trailing["total_co2e_tco2e"].sum())),
-             "help": f"Historical {window}; synthetic."},
+             "help": f"Historical {window}."},
             {"label": "Operating profit, trailing 12 months (history)", "value": gbp(float(trailing["operating_profit_gbp"].sum())),
-             "help": f"Historical {window}; synthetic."},
+             "help": f"Historical {window}."},
         ]
     horizon = period_label(baseline.monthly["timestamp"])
     tiles += [
@@ -160,7 +117,7 @@ def company_context(state: DashboardState, dark: bool) -> None:
     st.caption(
         f"History: {period_label(history['timestamp']) if history is not None and len(history) else 'not provided'} · "
         f"Forecast horizon: {period_label(baseline.monthly['timestamp'])}. Both 12-month totals above are labelled "
-        "periods; the history window is observed (synthetic) and the forecast window is projected."
+        "periods; the history window is observed and the forecast window is projected."
     )
     tab_e, tab_p = st.tabs(["Emissions", "Operating profit"])
     with tab_e:
@@ -171,12 +128,10 @@ def company_context(state: DashboardState, dark: bool) -> None:
 
 def backtest_panel(state: DashboardState, dark: bool) -> None:
     report = state.backtest
-    st.subheader("Forecast evaluation (temporal backtest)" + mock_tag(bool(report and report.provenance.is_mock)))
+    st.subheader("Forecast evaluation (temporal backtest)")
     if report is None:
         st.info("The forecast provider did not publish a backtest report.", icon="ℹ️")
         return
-    if report.provenance.is_mock:
-        st.caption("Fixture backtest: illustrative numbers for panel layout — not an evaluation of any trained model.")
     rows = []
     for target, m in report.aggregate_metrics.items():
         beats = m["mae"] < m["naive_mae"]
@@ -248,7 +203,7 @@ def _strategy_label(sid: str, analysis: Any) -> str:
 
 def optimization_panel(state: DashboardState, services: Services, request: AnalysisRequest, dark: bool) -> None:
     analysis = state.analysis
-    st.subheader("Optimized strategies" + mock_tag(bool(analysis and analysis.optimization.provenance.is_mock)))
+    st.subheader("Optimized strategies")
     status = state.status
     if status in (VALIDATION_ERROR, PROVIDER_ERROR) and state.error:
         error_box(state.error.kind, state.error.error_type, state.error.message)
@@ -339,7 +294,7 @@ def optimization_panel(state: DashboardState, services: Services, request: Analy
 
 def strategy_kpis(result: SimulationResult, *, title: str, services: Services, request: AnalysisRequest) -> None:
     m = result.metrics
-    st.markdown(f"**{title}**" + mock_tag(result.provenance.is_mock) + f" · `{result.strategy_id}`")
+    st.markdown(f"**{title}**" + f" · `{result.strategy_id}`")
     kpi_row([
         {"label": "Horizon emissions", "value": tonnes(m["total_co2e_tco2e"]),
          "delta": tonnes(-m["co2_reduction_tco2e"], signed=True), "delta_color": "inverse",
@@ -372,7 +327,7 @@ def selected_strategy_panel(state: DashboardState, services: Services, request: 
 
 def whatif_panel(state: DashboardState, services: Services, request: AnalysisRequest) -> None:
     baseline = state.baseline
-    st.subheader("Manual what-if" + mock_tag(services.providers["simulator"].is_mock))
+    st.subheader("Manual what-if")
     if baseline is None:
         st.info("What-if needs a baseline forecast.", icon="ℹ️")
         return
@@ -466,7 +421,7 @@ def optional_panels(state: DashboardState, services: Services, request: Analysis
             else:
                 s = risk.summary
                 st.markdown(f"**{risk.n_simulations:,} trials** · uncertainty `{risk.uncertainty_id}` · seed "
-                            f"{risk.provenance.seed}{mock_tag(risk.provenance.is_mock)}")
+                            f"{risk.provenance.seed}")
                 kpi_row([
                     {"label": "P(target met)", "value": pct(s["target_probability"]),
                      "help": f"MC standard error {s['target_probability_mc_standard_error']:.4f}. "
@@ -485,8 +440,6 @@ def optional_panels(state: DashboardState, services: Services, request: Analysis
             st.caption("Enable **SHAP** in the sidebar and optimize to load forecast explanations.")
         else:
             exp = analysis.explanation
-            if exp.provenance.is_mock:
-                st.caption("Fixture contributions: illustrative layout, not a SHAP computation." + mock_tag(True))
             st.caption("Explains the forecast model's raw output (not causal action effects, nor why the optimizer "
                        "chose a strategy).")
             targets = sorted(set(exp.contributions["target"]))
@@ -507,7 +460,6 @@ def optional_panels(state: DashboardState, services: Services, request: Analysis
                 st.markdown(
                     f"Estimated intensity percentile: **{b.percentile:.0f}** (lower is better) — lower intensity than "
                     f"about **{b.better_than_pct:.0f}%** of this peer set (ties use midpoint rank)."
-                    + mock_tag(b.provenance.is_mock)
                 )
                 st.plotly_chart(charts.benchmark_position(b, dark=dark), width="stretch")
                 st.caption(
@@ -584,7 +536,7 @@ def assumptions_panel(assumptions: ActionAssumptions, is_mock: bool) -> None:
     st.subheader("Assumptions")
     calibrated = "calibrated" if assumptions.is_calibrated else "**illustrative, not calibrated** company economics"
     st.markdown(f"Action assumptions `{assumptions.assumptions_id}` v{assumptions.version} — {calibrated}. "
-                f"{assumptions.description}" + mock_tag(is_mock))
+                f"{assumptions.description}")
     st.markdown(
         "- Action values are fractions of the **remaining** eligible opportunity, implemented in month 1.\n"
         "- Budget = horizon gross outlay (capex + incremental opex); savings do not offset it.\n"

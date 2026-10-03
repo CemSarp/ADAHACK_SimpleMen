@@ -184,8 +184,6 @@ def main() -> None:
             state.run_optimize(request, services)
 
     dark = _is_dark()
-    components.provenance_banner(services)
-    components.data_provenance_line(state.baseline)
     components.company_context(state, dark)
     if state.baseline is not None:
         components.backtest_panel(state, dark)
