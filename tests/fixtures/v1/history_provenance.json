@@ -1,0 +1,16 @@
+{
+  "data_kind": "synthetic",
+  "source_description": "Deterministic WS4 C0 shape fixture for dashboard history panels; not the WS1 generator.",
+  "reporting_frequency": "monthly",
+  "accounting_scope": "scope1_scope2_scope3",
+  "scope2_method": "market_based_demo",
+  "generator_config_id": "c0-fixtures-r1",
+  "seed": 42,
+  "units": {
+    "emissions": "tCO2e",
+    "money": "GBP",
+    "energy": "kWh"
+  },
+  "transforms": [],
+  "is_mock": true
+}

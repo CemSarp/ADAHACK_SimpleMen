@@ -1,0 +1,5 @@
+{
+  "budget_gbp": 500000,
+  "min_total_profit_gbp": 1000000,
+  "min_co2_reduction_ratio": 0.2
+}

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "example-benchmark-run",
+  "provenance": {
+    "provider": "fixture",
+    "is_mock": true,
+    "seed": 42,
+    "input_hash": "fixture-v1",
+    "config_id": "demo-v1",
+    "assumptions_id": null
+  },
+  "status": "ok",
+  "company_intensity_tco2e_per_million_gbp": 100,
+  "industry_median": 105,
+  "percentile": 45,
+  "better_than_pct": 55,
+  "peer_count": 10,
+  "source_id": "synthetic-peers-v1",
+  "source_url": null,
+  "retrieved_at": "2026-10-03T00:00:00Z",
+  "snapshot_id": "synthetic-peer-snapshot-v1",
+  "is_synthetic": true,
+  "period_start": "2027-01-01",
+  "period_end": "2027-12-31",
+  "scope_coverage": "scope1_scope2_scope3",
+  "scope2_method": "market_based_demo",
+  "comparison_basis": "forecast_vs_historical_peers",
+  "reason": null
+}

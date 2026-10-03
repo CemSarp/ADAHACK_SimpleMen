@@ -2,9 +2,20 @@
 
 ## Current project plan
 
-Build **CarbonOpt AI with Python 3.11, Streamlit + Plotly**. Start with [the current developer documentation](carbonopt-ai-docs/README.md) and [the central implementation plan](carbonopt-ai-docs/IMPLEMENTATION_PLAN.md), then read the shared contracts and your workstream. These documents describe implementation targets; the application skeleton is not yet delivered in this checkout.
+CarbonOpt AI is a single-company decision tool built with **Streamlit + Plotly**. Specs live in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md). The WS4 dashboard and integration layer runs today on labelled mock providers; see [the WS4 handoff](docs/handoffs/WS4_DASHBOARD_HANDOFF.md) for status and what depends on WS1-WS3.
 
 For Workstream 3, use [the step-by-step guide](docs/workstream3/README.md), [architectural decisions](docs/workstream3/ARCHITECTURAL_DECISIONS.md), [edge cases](docs/workstream3/EDGE_CASES.md), and [iterative coding-agent prompts](docs/workstream3/AGENT_PROMPTS.md).
+
+### Run the dashboard (from the repository root, Python 3.11)
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pytest
+.venv/bin/python -m streamlit run app.py
+```
+
+Mock output is visibly labelled. `CARBONOPT_PROVIDER_MODE=real` fails with a clear error until the real providers exist.
 
 ## Getting Started
 

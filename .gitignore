@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Local secrets / environment
+.env
+.streamlit/secrets.toml
+
+# Generated artifacts (rebuilt from versioned inputs; metadata sidecars only)
+models/*
+!models/.gitkeep
+*.pkl
+*.joblib
+*.lgb
+data/*_samples*.csv
+
+# Editors / OS
+.DS_Store
+.idea/

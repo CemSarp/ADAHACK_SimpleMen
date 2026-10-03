@@ -1,0 +1,700 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "fixture-backtest-run",
+  "provenance": {
+    "provider": "fixture",
+    "is_mock": true,
+    "seed": 42,
+    "input_hash": "c0-fixtures-r1",
+    "config_id": "demo-v1",
+    "assumptions_id": null
+  },
+  "model_family": "fixture-illustrative",
+  "feature_spec_id": "fixture-features-v1",
+  "driver_policy_id": "flat-demo-v1",
+  "selected_models": {
+    "total_co2e_tco2e": "fixture-illustrative",
+    "operating_profit_gbp": "fixture-illustrative"
+  },
+  "folds": [
+    {
+      "fold_id": 0,
+      "train_cutoff": "2023-12-01",
+      "test_start": "2024-01-01",
+      "test_end": "2024-12-01",
+      "target": "total_co2e_tco2e",
+      "mae": 1.414852500000001,
+      "rmse": 1.7506266116187283,
+      "r2": 0.8566252863461828,
+      "naive_mae": 0.9279124166666671,
+      "naive_rmse": 1.0737068519869606,
+      "effective_train_size": 48,
+      "adjustment_count": 0
+    },
+    {
+      "fold_id": 0,
+      "train_cutoff": "2023-12-01",
+      "test_start": "2024-01-01",
+      "test_end": "2024-12-01",
+      "target": "operating_profit_gbp",
+      "mae": 1799.0424333333347,
+      "rmse": 2171.3102464383533,
+      "r2": 0.610753768196298,
+      "naive_mae": 3001.2658333333334,
+      "naive_rmse": 3383.6074842232597,
+      "effective_train_size": 48,
+      "adjustment_count": 0
+    },
+    {
+      "fold_id": 1,
+      "train_cutoff": "2024-12-01",
+      "test_start": "2025-01-01",
+      "test_end": "2025-12-01",
+      "target": "total_co2e_tco2e",
+      "mae": 2.0440123333333324,
+      "rmse": 2.523356956302359,
+      "r2": 0.7294609752306508,
+      "naive_mae": 0.9732036666666678,
+      "naive_rmse": 1.076029099893912,
+      "effective_train_size": 60,
+      "adjustment_count": 0
+    },
+    {
+      "fold_id": 1,
+      "train_cutoff": "2024-12-01",
+      "test_start": "2025-01-01",
+      "test_end": "2025-12-01",
+      "target": "operating_profit_gbp",
+      "mae": 2060.0956666666666,
+      "rmse": 2520.2111847314704,
+      "r2": 0.570516115835742,
+      "naive_mae": 3027.606666666669,
+      "naive_rmse": 3197.405856469171,
+      "effective_train_size": 60,
+      "adjustment_count": 0
+    },
+    {
+      "fold_id": 2,
+      "train_cutoff": "2025-12-01",
+      "test_start": "2026-01-01",
+      "test_end": "2026-12-01",
+      "target": "total_co2e_tco2e",
+      "mae": 1.1761428333333324,
+      "rmse": 1.3766592542064149,
+      "r2": 0.9123045611911483,
+      "naive_mae": 0.6481366666666659,
+      "naive_rmse": 0.8620717377682837,
+      "effective_train_size": 72,
+      "adjustment_count": 0
+    },
+    {
+      "fold_id": 2,
+      "train_cutoff": "2025-12-01",
+      "test_start": "2026-01-01",
+      "test_end": "2026-12-01",
+      "target": "operating_profit_gbp",
+      "mae": 2192.918174999999,
+      "rmse": 2867.7666797433917,
+      "r2": 0.518525192179093,
+      "naive_mae": 3402.344166666666,
+      "naive_rmse": 3705.8163723024645,
+      "effective_train_size": 72,
+      "adjustment_count": 0
+    }
+  ],
+  "aggregate_metrics": {
+    "operating_profit_gbp": {
+      "mae": 2017.3520916666666,
+      "rmse": 2535.753558700071,
+      "r2": 0.6977958698007546,
+      "naive_mae": 3143.7388888888895,
+      "naive_rmse": 3435.368917768027
+    },
+    "total_co2e_tco2e": {
+      "mae": 1.545002555555555,
+      "rmse": 1.9431258806726286,
+      "r2": 0.8329556317846494,
+      "naive_mae": 0.8497509166666669,
+      "naive_rmse": 1.0089355296352487
+    }
+  },
+  "oof_predictions": [
+    {
+      "fold_id": 0,
+      "timestamp": "2024-01-01",
+      "target": "total_co2e_tco2e",
+      "actual": 103.28931,
+      "predicted": 103.7938,
+      "naive_predicted": 102.63840300000001
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-02-01",
+      "target": "total_co2e_tco2e",
+      "actual": 103.91242199999999,
+      "predicted": 105.3218,
+      "naive_predicted": 103.56091699999999
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-03-01",
+      "target": "total_co2e_tco2e",
+      "actual": 103.389999,
+      "predicted": 102.1792,
+      "naive_predicted": 102.12413000000001
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-04-01",
+      "target": "total_co2e_tco2e",
+      "actual": 101.150676,
+      "predicted": 99.3124,
+      "naive_predicted": 99.45987500000001
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-05-01",
+      "target": "total_co2e_tco2e",
+      "actual": 97.63699,
+      "predicted": 93.7474,
+      "naive_predicted": 96.35649599999999
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-06-01",
+      "target": "total_co2e_tco2e",
+      "actual": 94.26584299999999,
+      "predicted": 96.0977,
+      "naive_predicted": 92.677077
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-07-01",
+      "target": "total_co2e_tco2e",
+      "actual": 91.802762,
+      "predicted": 91.8333,
+      "naive_predicted": 90.265595
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-08-01",
+      "target": "total_co2e_tco2e",
+      "actual": 90.58305899999999,
+      "predicted": 90.9558,
+      "naive_predicted": 90.898932
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-09-01",
+      "target": "total_co2e_tco2e",
+      "actual": 92.798168,
+      "predicted": 91.3438,
+      "naive_predicted": 92.53070199999999
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-10-01",
+      "target": "total_co2e_tco2e",
+      "actual": 95.210999,
+      "predicted": 97.5465,
+      "naive_predicted": 94.22119799999999
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-11-01",
+      "target": "total_co2e_tco2e",
+      "actual": 98.247094,
+      "predicted": 100.1004,
+      "naive_predicted": 97.183983
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-12-01",
+      "target": "total_co2e_tco2e",
+      "actual": 101.548486,
+      "predicted": 101.3011,
+      "naive_predicted": 101.68167499999998
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-01-01",
+      "target": "operating_profit_gbp",
+      "actual": 94058.57,
+      "predicted": 92490.0583,
+      "naive_predicted": 92307.07
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-02-01",
+      "target": "operating_profit_gbp",
+      "actual": 97698.13,
+      "predicted": 96652.6876,
+      "naive_predicted": 93600.85
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-03-01",
+      "target": "operating_profit_gbp",
+      "actual": 96715.61,
+      "predicted": 94398.4233,
+      "naive_predicted": 93555.1
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-04-01",
+      "target": "operating_profit_gbp",
+      "actual": 94820.81,
+      "predicted": 94896.375,
+      "naive_predicted": 92729.53
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-05-01",
+      "target": "operating_profit_gbp",
+      "actual": 92520.29,
+      "predicted": 90810.0495,
+      "naive_predicted": 89484.29
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-06-01",
+      "target": "operating_profit_gbp",
+      "actual": 90033.03,
+      "predicted": 91614.575,
+      "naive_predicted": 86962.64
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-07-01",
+      "target": "operating_profit_gbp",
+      "actual": 89530.53,
+      "predicted": 88565.0276,
+      "naive_predicted": 84483.76
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-08-01",
+      "target": "operating_profit_gbp",
+      "actual": 85805.79,
+      "predicted": 84894.643,
+      "naive_predicted": 82692.9
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-09-01",
+      "target": "operating_profit_gbp",
+      "actual": 89071.37,
+      "predicted": 93179.1269,
+      "naive_predicted": 83017.96
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-10-01",
+      "target": "operating_profit_gbp",
+      "actual": 88534.92,
+      "predicted": 86607.3744,
+      "naive_predicted": 87561.29
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-11-01",
+      "target": "operating_profit_gbp",
+      "actual": 92124.74,
+      "predicted": 87791.4247,
+      "naive_predicted": 88699.38
+    },
+    {
+      "fold_id": 0,
+      "timestamp": "2024-12-01",
+      "target": "operating_profit_gbp",
+      "actual": 95094.43,
+      "predicted": 96139.1807,
+      "naive_predicted": 95290.6
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-01-01",
+      "target": "total_co2e_tco2e",
+      "actual": 104.364441,
+      "predicted": 100.0273,
+      "naive_predicted": 103.28931
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-02-01",
+      "target": "total_co2e_tco2e",
+      "actual": 105.783621,
+      "predicted": 106.343,
+      "naive_predicted": 103.91242199999999
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-03-01",
+      "target": "total_co2e_tco2e",
+      "actual": 104.332493,
+      "predicted": 106.381,
+      "naive_predicted": 103.389999
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-04-01",
+      "target": "total_co2e_tco2e",
+      "actual": 101.69626000000001,
+      "predicted": 101.8389,
+      "naive_predicted": 101.150676
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-05-01",
+      "target": "total_co2e_tco2e",
+      "actual": 98.015388,
+      "predicted": 98.0336,
+      "naive_predicted": 97.63699
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-06-01",
+      "target": "total_co2e_tco2e",
+      "actual": 94.981509,
+      "predicted": 91.0861,
+      "naive_predicted": 94.26584299999999
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-07-01",
+      "target": "total_co2e_tco2e",
+      "actual": 92.284456,
+      "predicted": 93.3094,
+      "naive_predicted": 91.802762
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-08-01",
+      "target": "total_co2e_tco2e",
+      "actual": 91.680198,
+      "predicted": 92.4068,
+      "naive_predicted": 90.58305899999999
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-09-01",
+      "target": "total_co2e_tco2e",
+      "actual": 93.22156899999999,
+      "predicted": 91.0365,
+      "naive_predicted": 92.798168
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-10-01",
+      "target": "total_co2e_tco2e",
+      "actual": 96.419086,
+      "predicted": 100.1084,
+      "naive_predicted": 95.210999
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-11-01",
+      "target": "total_co2e_tco2e",
+      "actual": 99.72671,
+      "predicted": 97.2854,
+      "naive_predicted": 98.247094
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-12-01",
+      "target": "total_co2e_tco2e",
+      "actual": 103.008521,
+      "predicted": 99.5489,
+      "naive_predicted": 101.548486
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-01-01",
+      "target": "operating_profit_gbp",
+      "actual": 97646.61,
+      "predicted": 92341.3004,
+      "naive_predicted": 94058.57
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-02-01",
+      "target": "operating_profit_gbp",
+      "actual": 100747.25,
+      "predicted": 100825.7449,
+      "naive_predicted": 97698.13
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-03-01",
+      "target": "operating_profit_gbp",
+      "actual": 99714.78,
+      "predicted": 100725.5027,
+      "naive_predicted": 96715.61
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-04-01",
+      "target": "operating_profit_gbp",
+      "actual": 99636.71,
+      "predicted": 100954.8257,
+      "naive_predicted": 94820.81
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-05-01",
+      "target": "operating_profit_gbp",
+      "actual": 94992.52,
+      "predicted": 94031.1198,
+      "naive_predicted": 92520.29
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-06-01",
+      "target": "operating_profit_gbp",
+      "actual": 91899.95,
+      "predicted": 89659.4062,
+      "naive_predicted": 90033.03
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-07-01",
+      "target": "operating_profit_gbp",
+      "actual": 90064.5,
+      "predicted": 92341.5951,
+      "naive_predicted": 89530.53
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-08-01",
+      "target": "operating_profit_gbp",
+      "actual": 89649.89,
+      "predicted": 87235.8371,
+      "naive_predicted": 85805.79
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-09-01",
+      "target": "operating_profit_gbp",
+      "actual": 92255.48,
+      "predicted": 88907.0483,
+      "naive_predicted": 89071.37
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-10-01",
+      "target": "operating_profit_gbp",
+      "actual": 91909.71,
+      "predicted": 95773.5455,
+      "naive_predicted": 88534.92
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-11-01",
+      "target": "operating_profit_gbp",
+      "actual": 95016.86,
+      "predicted": 95523.0286,
+      "naive_predicted": 92124.74
+    },
+    {
+      "fold_id": 1,
+      "timestamp": "2025-12-01",
+      "target": "operating_profit_gbp",
+      "actual": 98805.24,
+      "predicted": 100202.2173,
+      "naive_predicted": 95094.43
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-01-01",
+      "target": "total_co2e_tco2e",
+      "actual": 104.87004300000001,
+      "predicted": 106.1827,
+      "naive_predicted": 104.364441
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-02-01",
+      "target": "total_co2e_tco2e",
+      "actual": 105.862011,
+      "predicted": 104.6514,
+      "naive_predicted": 105.783621
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-03-01",
+      "target": "total_co2e_tco2e",
+      "actual": 105.24747099999999,
+      "predicted": 104.1258,
+      "naive_predicted": 104.332493
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-04-01",
+      "target": "total_co2e_tco2e",
+      "actual": 102.67856599999999,
+      "predicted": 103.994,
+      "naive_predicted": 101.69626000000001
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-05-01",
+      "target": "total_co2e_tco2e",
+      "actual": 99.35666,
+      "predicted": 98.1303,
+      "naive_predicted": 98.015388
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-06-01",
+      "target": "total_co2e_tco2e",
+      "actual": 95.202763,
+      "predicted": 95.8426,
+      "naive_predicted": 94.981509
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-07-01",
+      "target": "total_co2e_tco2e",
+      "actual": 94.105488,
+      "predicted": 93.9371,
+      "naive_predicted": 92.284456
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-08-01",
+      "target": "total_co2e_tco2e",
+      "actual": 92.885658,
+      "predicted": 90.667,
+      "naive_predicted": 91.680198
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-09-01",
+      "target": "total_co2e_tco2e",
+      "actual": 93.670162,
+      "predicted": 95.4806,
+      "naive_predicted": 93.22156899999999
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-10-01",
+      "target": "total_co2e_tco2e",
+      "actual": 96.473193,
+      "predicted": 93.9854,
+      "naive_predicted": 96.419086
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-11-01",
+      "target": "total_co2e_tco2e",
+      "actual": 99.547688,
+      "predicted": 100.0115,
+      "naive_predicted": 99.72671
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-12-01",
+      "target": "total_co2e_tco2e",
+      "actual": 103.034145,
+      "predicted": 103.1722,
+      "naive_predicted": 103.008521
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-01-01",
+      "target": "operating_profit_gbp",
+      "actual": 101883.71,
+      "predicted": 105755.1215,
+      "naive_predicted": 97646.61
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-02-01",
+      "target": "operating_profit_gbp",
+      "actual": 104203.01,
+      "predicted": 100702.9604,
+      "naive_predicted": 100747.25
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-03-01",
+      "target": "operating_profit_gbp",
+      "actual": 102517.68,
+      "predicted": 100847.062,
+      "naive_predicted": 99714.78
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-04-01",
+      "target": "operating_profit_gbp",
+      "actual": 102797.0,
+      "predicted": 102487.6636,
+      "naive_predicted": 99636.71
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-05-01",
+      "target": "operating_profit_gbp",
+      "actual": 99756.06,
+      "predicted": 100297.2777,
+      "naive_predicted": 94992.52
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-06-01",
+      "target": "operating_profit_gbp",
+      "actual": 97841.08,
+      "predicted": 100390.2035,
+      "naive_predicted": 91899.95
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-07-01",
+      "target": "operating_profit_gbp",
+      "actual": 94379.32,
+      "predicted": 95260.1582,
+      "naive_predicted": 90064.5
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-08-01",
+      "target": "operating_profit_gbp",
+      "actual": 91307.69,
+      "predicted": 91375.7889,
+      "naive_predicted": 89649.89
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-09-01",
+      "target": "operating_profit_gbp",
+      "actual": 91470.86,
+      "predicted": 94292.7483,
+      "naive_predicted": 92255.48
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-10-01",
+      "target": "operating_profit_gbp",
+      "actual": 96772.58,
+      "predicted": 102857.8243,
+      "naive_predicted": 91909.71
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-11-01",
+      "target": "operating_profit_gbp",
+      "actual": 98360.38,
+      "predicted": 94360.4813,
+      "naive_predicted": 95016.86
+    },
+    {
+      "fold_id": 2,
+      "timestamp": "2026-12-01",
+      "target": "operating_profit_gbp",
+      "actual": 100309.02,
+      "predicted": 100291.727,
+      "naive_predicted": 98805.24
+    }
+  ],
+  "fixture_note": "Illustrative numbers for panel layout; not a model evaluation."
+}
