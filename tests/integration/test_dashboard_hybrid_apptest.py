@@ -55,6 +55,7 @@ def test_optimize_consumes_current_inputs_and_selects_the_recommendation(app):
     app.slider(key="co_widget_target").set_value(25)
     _optimize(app.run())
     analysis = app.session_state["cos_analysis"]
+    assert analysis.request.company_id == "demo-company"  # the public reference panel never feeds the optimizer
     c = analysis.request.constraints
     assert (c.budget_gbp, c.min_total_profit_gbp, c.min_co2_reduction_ratio) == (450_000.0, 950_000.0, 0.25)
     assert analysis.optimization.constraints == c
