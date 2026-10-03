@@ -17,7 +17,9 @@ models/*
 *.joblib
 *.lgb
 data/*_samples*.csv
+**/temp_outputs/
 
 # Editors / OS
 .DS_Store
 .idea/
+.vscode/

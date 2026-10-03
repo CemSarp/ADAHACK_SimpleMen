@@ -15,6 +15,9 @@ dependencies:
   # Machine learning & stats
   - scikit-learn
   - statsmodels
+  - xgboost
+  - lightgbm
+  - prophet
   # Notebooks
   - jupyterlab
   - ipykernel
