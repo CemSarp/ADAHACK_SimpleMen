@@ -157,3 +157,12 @@ The earlier parity check extracted the WS2 engine from `origin/workstream2` (`22
 1. The benchmark uses `baseline.totals` (12-month revenue and CO2), the monthly timestamps and `scope2_method`. A real forecast must keep `scope2_method` equal to `market_based_demo`, or update `config/benchmark.json`; a mismatch returns `unavailable`. Horizons of 36 or 60 months return `unsupported_horizon` until annual slices are specified.
 
 **Before any non-synthetic claim:** qualify a real peer source (at least 10 entities, scope 1+2+3, compatible scope 2 method, GBP or FX, completed periods, usage rights) and calibrate the uncertainty bounds.
+
+
+## Integration update (branch `feat/integration-all-workstreams`)
+
+- **Risk:** risk runs over the real WS1 baseline and WS2 engine in `real` mode. `load_uncertainty` resolves relative paths against the working directory, so the integration adapter passes a repo-rooted path. A follow-up could resolve relative paths against the repository root inside WS3.
+- **Benchmark:** the CSV company uses `config/benchmark_supply_chain.json` (industry `logistics`, scope 2 `market_based`). The bundled peers are `technology`, so the result is an explicit `unavailable` (industry_mismatch=10).
+- **Peer period wording:** the WS4 caption now reads "forecast period compared", resolving follow-up WS4-2.
+
+See [INTEGRATION_HANDOFF.md](../../../../docs/handoffs/INTEGRATION_HANDOFF.md).

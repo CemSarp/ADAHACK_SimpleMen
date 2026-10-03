@@ -167,3 +167,8 @@ Before the merge, WS2's own NumPy validators gave about 0.8 ms per simulation an
 - No discounting, financing, tax or action-driven revenue. Asset lives are whole months.
 - A full 2,048-candidate result serializes to about 15 MB.
 - Open items are tracked in [WS2_FOLLOW_UPS.md](WS2_FOLLOW_UPS.md).
+
+
+## Integration update (branch `feat/integration-all-workstreams`)
+
+WS1 and WS3 are now integrated; `real` mode runs WS2 on the WS1 baseline built from `data/synthetic_data.csv`. The real simulator binds `config/action_assumptions_supply_chain.json` (`supply-chain-actions-v1`, illustrative, `is_calibrated: false`) when the forecast is the CSV company, and keeps `config/action_assumptions.json` for the demo fixture. **WS2 review needed:** bucket allocations (scope1 = fleet diesel, gas/travel/cloud zero, supplier 0.7 / other 0.3), tariffs derived from the CSV, and the placeholder capex/opex. See [INTEGRATION_HANDOFF.md](INTEGRATION_HANDOFF.md).

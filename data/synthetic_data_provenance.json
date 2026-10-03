@@ -1,0 +1,19 @@
+{
+  "file": "data/synthetic_data.csv",
+  "sha256": "bce28163c1e917363786448101b87032dcc478bd7556e3a8cfc5bbf69ba3a650",
+  "data_kind": "synthetic",
+  "source_description": "Noisy 'as reported' output of the WS1 synthetic supply-chain generator (synthetic_data_generation/synthetic_data_generator.py, SupplyChainDataGenerator with default GeneratorConfig). Verified to reproduce the CSV within 1.5e-8 on 2026-10-03.",
+  "generator": "synthetic_data_generation.synthetic_data_generator.SupplyChainDataGenerator",
+  "generator_config_id": "GeneratorConfig-default",
+  "seed": 42,
+  "reporting_frequency": "monthly",
+  "period": ["2001-01-01", "2025-12-01"],
+  "rows": 300,
+  "companies": 1,
+  "currency": "EUR",
+  "accounting_scope": "scope1_scope2_scope3",
+  "scope2_method": "market_based (scope2 = electricity_consumption_kwh x grid_emission_factor x (1 - renewable_energy_share), verified on every row)",
+  "units": {"money": "EUR per month", "emissions": "tCO2e per month", "energy": "kWh per month", "distance": "km per month"},
+  "transforms": [],
+  "notes": "Synthetic demonstration data. It is not a reported observation of any real company."
+}

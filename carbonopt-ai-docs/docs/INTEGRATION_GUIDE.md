@@ -139,22 +139,24 @@ python -m src.forecasting.backtest --config config/default.json
 
 The exact CLI implementation must agree with these commands or update the guide in the same PR. These module names do not imply code exists in this documentation package.
 
-### Current integration state (WS1 not yet available)
+### Current integration state (all four workstreams integrated)
 
-The repository runs WS4's dashboard with the real WS2 providers through the hybrid preset `fixture-forecast-real-ws2`:
+`CARBONOPT_PROVIDER_MODE=real python -m streamlit run app.py` binds every slot to a real implementation. Full details, measurements and review list: [integration handoff](../../docs/handoffs/INTEGRATION_HANDOFF.md).
 
-```sh
-CARBONOPT_PROVIDER_MODE=hybrid python -m streamlit run app.py
-```
-
-| Slot | Bound to |
+| Slot | Bound to (actual entry point) |
 |---|---|
-| forecast | labelled fixture baseline (mock) |
-| simulator, optimizer | real WS2 |
-| risk, benchmark | unavailable until WS3 publishes factories |
-| SHAP | disabled (a fixture baseline has no model to explain) |
+| forecast | `src.forecasting.provider.create_forecast_provider()`: explicit CSV import (`src/forecasting/history.py`), WS1 `ml_core.modelling.ForecastingPipeline` (cached artifacts), baseline/backtest assembly (`src/forecasting/baseline.py`) |
+| simulator | WS2 `src.actions.engine.simulate_strategy` with `config/action_assumptions_supply_chain.json` |
+| optimizer | WS2 `optimize_strategies`, `evaluate_constraints`, `recommend_strategy` |
+| risk | WS3 `src.risk.provider.create_risk_provider(config/uncertainty.json)` |
+| shap | `src.explainability.provider.create_explanation_provider()` over WS1's trained trees |
+| benchmark | WS3 `create_benchmark_provider(config/benchmark_supply_chain.json)`: `unavailable` until a compatible logistics peer set exists |
 
-The banner reads **PARTIALLY MOCKED** and the provenance line names each provider. This is not C4. The WS1 replacement point is `src.forecasting.provider.create_forecast_provider()`; once it exists, `CARBONOPT_PROVIDER_MODE=real` binds it without consumer changes. Until then real mode stops with an error naming the missing forecast provider.
+Company binding: the company-specific assumption, uncertainty and benchmark files apply only when the forecast slot is the real CSV-backed WS1 provider. The hybrid preset `fixture-forecast-real-ws2` still pairs the demo fixture with the demo assumptions.
+
+Order inside `run_analysis`: baseline/backtest, NSGA-II and Pareto, WS3 risk over the bounded pool (common trials), then WS2's risk-aware recommendation, then SHAP and benchmark annotations. `compare_scenarios` reruns only WS2's policy for the three tolerances on the same analysis. The dashboard data provenance (synthetic) is shown separately from implementation provenance (real providers).
+
+C4 is **not** accepted: the review items in the integration handoff and the acceptance checklist below have not been signed off.
 
 ## 8. Integration acceptance and rollback
 

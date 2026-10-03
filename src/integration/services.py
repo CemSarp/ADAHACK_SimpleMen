@@ -173,6 +173,8 @@ def create_services(*, mode: Mode, provider_overrides: Mapping[str, object] | No
     bound: dict[str, object | None] = {}
     unavailable: dict[str, str] = {}
     missing_p0: list[str] = []
+    # The real WS1 forecast is the CSV company; its real WS2/WS3 partners must use that company's files.
+    company_bound = overrides.get("forecast", "real" if mode == "real" else "mock") == "real"
     for slot in ALL_SLOTS:
         choice = overrides.get(slot, "real" if mode == "real" else "mock")
         if slot == "narrative":
@@ -193,7 +195,7 @@ def create_services(*, mode: Mode, provider_overrides: Mapping[str, object] | No
             if mode == "mock":
                 raise ProviderConfigurationError(f"mock mode cannot bind real provider for {slot!r}; use hybrid mode")
             try:
-                bound[slot] = _check_instance(slot, create_real_provider(slot), mode)
+                bound[slot] = _check_instance(slot, create_real_provider(slot, company_bound=company_bound), mode)
             except ProviderUnavailable as exc:
                 bound[slot] = None
                 unavailable[slot] = str(exc)
@@ -224,12 +226,14 @@ def create_services(*, mode: Mode, provider_overrides: Mapping[str, object] | No
         shap_available_targets=tuple(shap.available_targets) if shap is not None else (),
         benchmark_available=bound["benchmark"] is not None,
         narrative_available=bound["narrative"] is not None,
-        # C6 needs a real risk pool plus WS2 tolerance policies; not wired yet.
-        scenario_compare_available=False,
+        # C6: the three tolerance policies need a bound risk provider and an optimizer whose
+        # recommendation policy consumes risk results (WS2's real policy; the mock ignores risk).
+        scenario_compare_available=bound["risk"] is not None and providers["optimizer"].kind == "real",
         is_mock={slot: info.is_mock for slot, info in providers.items()},
     )
     if not capabilities.scenario_compare_available:
-        unavailable.setdefault("scenario_compare", "needs real risk (C5a) and WS2 tolerance policies (C6)")
+        unavailable.setdefault("scenario_compare", "needs a risk provider and WS2's real recommendation policy "
+                               "(the mock optimizer ignores risk results)")
     return Services(
         mode=mode,
         forecast=forecast,

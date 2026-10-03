@@ -55,8 +55,11 @@ def fake_ws2(monkeypatch, tmp_path):
     return modules
 
 
-def test_real_mode_names_the_missing_ws1_forecast_provider():
-    # WS2 publishes its simulator/optimizer; WS1's forecast factory does not exist yet.
+def test_real_mode_names_the_missing_ws1_forecast_provider(monkeypatch):
+    # If WS1's forecast module were absent, real mode must name it and never substitute a mock.
+    from tests.support import hide_ws1_forecast
+
+    hide_ws1_forecast(monkeypatch)
     with pytest.raises(ProviderConfigurationError) as exc:
         create_services(mode="real")
     assert set(exc.value.missing) == {"forecast"}
@@ -96,14 +99,16 @@ def test_real_mode_binds_injected_non_mock_providers(request_ok):
         "simulator": _as_real(BehavioralMockSimulator(), "simulator"),
         "optimizer": _as_real(BehavioralMockOptimizer(), "optimizer"),
     })
-    # Optional slots without real providers are disabled, never mocked. WS3 risk and benchmark now exist.
-    assert services.shap is None
-    assert "not implemented yet" in services.unavailable["shap"]
+    # Every optional slot now has a real provider. SHAP is WS1's tree explainer: bound, and it refuses to
+    # explain a baseline that was not produced by its own trained model (checked before any training).
+    assert services.providers["shap"].kind == "real"
     assert services.capabilities.risk_available and services.providers["risk"].kind == "real"
     assert services.capabilities.benchmark_available and services.providers["benchmark"].kind == "real"
     bundle = run_analysis(replace(request_ok, risk_enabled=True), services=services)
     assert not services.is_mock and set(bundle.providers) == {"forecast", "simulator", "optimizer", "risk"}
     assert bundle.risk_results and not any("Risk is unavailable" in w for w in bundle.warnings)
+    explained = run_analysis(replace(request_ok, explanation_enabled=True), services=services)
+    assert explained.explanation is None and any("is not the explained WS1 model" in w for w in explained.warnings)
 
 
 def test_real_discovery_wraps_documented_ws2_signatures(fake_ws2, request_ok):
@@ -138,8 +143,11 @@ def test_missing_assumptions_file_is_a_configuration_error(fake_ws2, monkeypatch
         create_services(mode="hybrid", provider_overrides={"simulator": "real"})
 
 
-def test_failed_real_p0_provider_never_falls_back_to_mock():
-    # The WS1 forecast is the P0 slot without a real provider: asking for it must fail, not mock.
+def test_failed_real_p0_provider_never_falls_back_to_mock(monkeypatch):
+    # A P0 slot whose real provider cannot bind must fail, not mock.
+    from tests.support import hide_ws1_forecast
+
+    hide_ws1_forecast(monkeypatch)
     with pytest.raises(ProviderConfigurationError, match="forecast"):
         create_services(mode="hybrid", provider_overrides={"forecast": "real", "simulator": "real", "optimizer": "real"})
 

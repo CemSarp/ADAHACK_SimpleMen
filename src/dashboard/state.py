@@ -40,7 +40,7 @@ from src.contracts.types import (
     SimulationResult,
 )
 from src.integration import cache_keys
-from src.integration.pipeline import load_baseline, rerun_recommendation, run_analysis_for_baseline
+from src.integration.pipeline import compare_scenarios, load_baseline, rerun_recommendation, run_analysis_for_baseline
 from src.integration.services import Services
 
 PREFIX = "cos_"  # state-owned keys only; widget keys use "co_widget_"
@@ -168,7 +168,7 @@ class DashboardState:
         return bool(self._get("invalidated", False))
 
     def clear_analysis(self, *, invalidated: bool = False) -> None:
-        for name in ("analysis", "analysis_key", "recommendation_key", "error", "selected_strategy_id"):
+        for name in ("analysis", "analysis_key", "recommendation_key", "error", "selected_strategy_id", "scenarios"):
             self.store.pop(PREFIX + name, None)
         self._set("status", INITIAL)
         self._set("invalidated", invalidated)
@@ -183,12 +183,16 @@ class DashboardState:
             self.clear_analysis(invalidated=stored is not None or self.error is not None)
             return
         if self._get("recommendation_key") != cache_keys.recommendation_key(request, services) and self.analysis is not None:
+            previous = self.analysis.recommendation.strategy_id
+            followed = self.selected_strategy_id == previous  # selection was the recommendation, not a user pick
             try:
                 bundle = rerun_recommendation(self.analysis, request.tolerance, services=services)
             except CarbonOptError as exc:
                 self._fail(exc)
                 return
             self._store_analysis(bundle, request, services)
+            if followed and bundle.recommendation.strategy_id is not None:
+                self._set("selected_strategy_id", bundle.recommendation.strategy_id)
 
     def _fail(self, exc: CarbonOptError) -> None:
         info = classify_error(exc)
@@ -229,6 +233,23 @@ class DashboardState:
             return
         self.store.pop(PREFIX + "selected_strategy_id", None)
         self._store_analysis(bundle, request, services)
+
+    def scenarios(self, services: Services) -> dict[str, Any] | ErrorInfo | None:
+        """Scenario comparison for the CURRENT analysis, cached by its analysis key
+        (tolerance-independent: the same pool feeds all three policies)."""
+        analysis = self.analysis
+        if analysis is None:
+            return None
+        key = self._get("analysis_key")
+        cached = self._get("scenarios")
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        try:
+            value: dict[str, Any] | ErrorInfo = compare_scenarios(analysis, services=services)
+        except CarbonOptError as exc:
+            value = classify_error(exc)
+        self._set("scenarios", (key, value))
+        return value
 
     # ---- selection --------------------------------------------------------- #
 

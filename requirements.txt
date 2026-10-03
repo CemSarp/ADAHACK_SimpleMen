@@ -10,3 +10,11 @@ pytest==9.1.1
 # WS2 NSGA-II. 0.6.2+ seeds a local Generator and never touches the global NumPy RNG.
 # Imported lazily: mock-mode startup does not need it; the real optimizer provider does.
 pymoo==0.6.2
+# WS1 forecasting (P0 since integration): ml_core/modelling.py imports matplotlib and scikit-learn,
+# and uses XGBoost, LightGBM and Prophet when they import. macOS: XGBoost/LightGBM need the OpenMP
+# runtime (brew install libomp). Versions verified together on 2026-10-03 (Python 3.11).
+scikit-learn==1.9.1
+xgboost==3.2.0
+lightgbm==4.7.0
+prophet==1.4.0
+matplotlib==3.11.2

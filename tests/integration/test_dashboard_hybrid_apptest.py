@@ -101,11 +101,12 @@ def test_infeasible_request_shows_no_recommendation_state(app):
     assert not [s for s in app.selectbox if s.key == "co_widget_select"]
 
 
-def test_real_mode_reports_only_the_missing_ws1_forecast(monkeypatch):
+def test_real_mode_starts_with_all_real_providers_and_synthetic_data_label(monkeypatch):
+    # Integrated: WS1 (CSV company), WS2, WS3 are all real; the data stays labelled synthetic.
     monkeypatch.setenv("CARBONOPT_PROVIDER_MODE", "real")
-    at = AppTest.from_file(APP, default_timeout=300).run()
+    at = AppTest.from_file(APP, default_timeout=600).run()
     assert not at.exception, [e.message for e in at.exception]
-    errors = " ".join(_texts(at.error))
-    assert "Provider configuration error" in errors and "forecast: src.forecasting.provider is not implemented yet" in errors
-    assert "simulator:" not in errors and "optimizer:" not in errors
+    assert not _texts(at.error)
+    assert any("All bound computational providers are real" in s for s in _texts(at.success))
+    assert any("SYNTHETIC DATA" in c for c in _texts(at.caption))
     assert not any("PARTIALLY MOCKED" in w or "MOCK OUTPUT" in w for w in _texts(at.warning))

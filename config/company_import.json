@@ -1,0 +1,36 @@
+{
+  "import_id": "supply-chain-csv-import-v1",
+  "version": "1.0.0",
+  "description": "Explicit mapping from the WS1 supply-chain CSV (data/synthetic_data.csv) to the canonical company history schema (DATA_SCHEMAS.md section 2). Reviewed by: nobody yet (WS1 + WS4 review required).",
+  "company_id": "supply-chain-demo-co",
+  "industry": "logistics",
+  "date_column": "date",
+  "currency": {
+    "source": "EUR",
+    "target": "GBP",
+    "gbp_per_eur": 0.85,
+    "fx_method": "fixed_rate",
+    "fx_note": "ILLUSTRATIVE fixed rate chosen for the demonstration, not market data. Applied to every EUR money column and every month. Replace with a sourced rate (and date) before any non-synthetic use."
+  },
+  "columns": {
+    "revenue_gbp": {"from": "revenue_eur", "convert": "eur_to_gbp"},
+    "operating_profit_gbp": {"from": "ebitda_eur", "convert": "eur_to_gbp", "note": "EBITDA is used as the operating-profit series; the CSV reports no depreciation, so it is not EBIT."},
+    "electricity_kwh": {"from": "electricity_consumption_kwh"},
+    "renewable_energy_share": {"from": "renewable_energy_share"},
+    "ev_share": {"from": "fleet_ev_share"},
+    "fleet_size": {"from": "fleet_size_total"},
+    "fleet_km": {"from": "vehicle_km"},
+    "scope1_tco2e": {"from": "scope1_tco2e"},
+    "scope2_tco2e": {"from": "scope2_tco2e"},
+    "scope3_tco2e": {"from": "scope3_tco2e"},
+    "total_co2e_tco2e": {"from": "total_emissions_tco2e"}
+  },
+  "not_reported": {
+    "employees": "Not in the CSV. Stored as 0; no calculation reads it.",
+    "gas_kwh": "Not in the CSV. Stored as 0: the action assumptions allocate no scope1 to gas (gas_share = 0), so no gas emissions are implied or removed.",
+    "business_travel_km": "Not in the CSV. Stored as 0: travel_share = 0, so the travel action has no eligible opportunity and zero cost.",
+    "cloud_compute_hours": "Not in the CSV. Stored as 0: cloud_share = 0, so the cloud action has no eligible opportunity and zero cost."
+  },
+  "scope2_method": "market_based",
+  "required_identities": ["total_co2e_tco2e = scope1 + scope2 + scope3", "ebitda_eur = revenue_eur - operating_cost_eur"]
+}

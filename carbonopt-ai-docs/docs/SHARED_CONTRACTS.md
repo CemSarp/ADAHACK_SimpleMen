@@ -210,6 +210,15 @@ Capabilities include `supported_horizons`, `risk_available`, `shap_available_tar
 
 `ToolResult(status, tool_name, validated_arguments, data, error)` and `NarrativeResult(status, text, source_run_id, provider, is_template)` are defined in `src/contracts/types.py` with the fields listed in the Tool/Narrative paragraph of DATA_SCHEMAS.md. `status` for tools is `ok`, `error` or `unavailable`; `data` is a plain JSON-safe mapping built from serialized public results. The model-provider boundary (`ChatModelProvider`: `chat(messages, tools) -> ModelResponse`, `check_connection()`) lives in `src/llm/providers.py`, not in contracts, because it is WS4-internal. `execute_tool(name, arguments, *, context, services)` binds `AnalysisContext` on the server side; `explain_analysis(analysis, *, provider=None)` has a deterministic template implementation. No existing field changed. See [docs/CHATBOT_IMPLEMENTATION.md](../../docs/CHATBOT_IMPLEMENTATION.md). Review status: not reviewed by WS1-WS3.
 
+### Integration notes (additive; require review)
+
+- **Factories.** The real provider entry points are `src.forecasting.provider.create_forecast_provider()` and `src.explainability.provider.create_explanation_provider()` (integration adapters around WS1's `ml_core.modelling`), plus WS3's `create_risk_provider(path)` and `create_benchmark_provider(path)`. Paths are passed repo-rooted.
+- **Backtest predictions.** `BacktestReport.oof_predictions` may carry an additive `horizon` column (multi-horizon walk-forward). Aggregate metrics pool all horizons. Consumers that ignore the column still work.
+- **SHAP units.** `ExplanationResult.units` may describe WS1's relative raw output space (log ratio or margin deviation) rather than tonnes or GBP. The output space remains `raw_model`.
+- **Baseline currency.** The baseline currency stays GBP. A non-GBP source enters only through the explicit import adapter, with a recorded FX method.
+
+No existing field or signature changed.
+
 ## 4. Errors and status results
 
 | Condition | Defined behavior |
