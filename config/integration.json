@@ -1,0 +1,38 @@
+{
+  "config_id": "integration-supply-chain-v1",
+  "company": {
+    "input_csv": "data/synthetic_data.csv",
+    "import_config": "config/company_import.json",
+    "provenance": "data/synthetic_data_provenance.json"
+  },
+  "forecast": {
+    "horizon_months": 12,
+    "model_dir": "models/ws1",
+    "ws1_modelling": {
+      "test_months": 24,
+      "backtest_months": 12,
+      "step": 1,
+      "selection_metric": "wape",
+      "interval": 0.8,
+      "prophet_window": 96,
+      "seed": 42
+    },
+    "driver_policy": {
+      "policy_id": "seasonal-clipped-growth-v1",
+      "flow_columns": ["revenue_gbp", "electricity_kwh", "fleet_km"],
+      "state_columns": ["employees", "renewable_energy_share", "ev_share", "fleet_size"],
+      "zero_columns": ["gas_kwh", "business_travel_km", "cloud_compute_hours"],
+      "annual_growth_bounds": [-0.1, 0.2]
+    }
+  },
+  "assumptions": "config/action_assumptions_supply_chain.json",
+  "uncertainty": "config/uncertainty.json",
+  "benchmark": "config/benchmark_supply_chain.json",
+  "dashboard_defaults": {
+    "budget_gbp": 20000000.0,
+    "min_total_profit_gbp": 30000000.0,
+    "min_co2_reduction_ratio": 0.1,
+    "optimizer_max_evaluations": 2048,
+    "risk_trials": 1000
+  }
+}

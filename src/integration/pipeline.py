@@ -201,6 +201,26 @@ def run_analysis(request: AnalysisRequest, *, services: Services) -> AnalysisBun
     return run_analysis_for_baseline(request, services=services, baseline=baseline, backtest=backtest, warnings=warnings)
 
 
+SCENARIO_TOLERANCES = ("conservative", "balanced", "aggressive")
+
+
+def compare_scenarios(bundle: AnalysisBundle, *, services: Services) -> dict[str, RecommendationResult]:
+    """C6: the three WS2 tolerance policies over ONE analysis: same baseline,
+    constraints, optimization result and evaluated risk pool. No re-optimization,
+    no new risk trials; selection is WS2's `recommend_strategy` only."""
+    if not services.capabilities.scenario_compare_available:
+        raise ContractValidationError(
+            "scenario_compare", services.unavailable.get("scenario_compare", "capability unavailable"))
+    if bundle.request is None or not bundle.request.risk_enabled:
+        raise ContractValidationError("scenario_compare", "requires an analysis run with risk enabled")
+    return {
+        tol: val.validate_recommendation(
+            services.optimizer.recommend(bundle.optimization, risk_results=dict(bundle.risk_results), tolerance=tol),
+            bundle.optimization)
+        for tol in SCENARIO_TOLERANCES
+    }
+
+
 def rerun_recommendation(bundle: AnalysisBundle, tolerance: str, *, services: Services) -> AnalysisBundle:
     """Tolerance change: reuse the evaluated risk pool, rerun only the selection policy."""
     if bundle.request is None:

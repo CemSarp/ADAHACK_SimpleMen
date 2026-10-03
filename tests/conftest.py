@@ -6,6 +6,12 @@ contract serializers and validators, so every test sees one schema definition.
 
 from __future__ import annotations
 
+import os
+
+# Every test (including subprocess and AppTest runs) uses the small WS1 walk-forward in
+# tests/fixtures/integration/integration_test.json, never the production training config.
+os.environ.setdefault("CARBONOPT_CONFIG", "tests/fixtures/integration/integration_test.json")
+
 import pytest
 
 from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig

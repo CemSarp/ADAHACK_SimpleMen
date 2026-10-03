@@ -113,7 +113,10 @@ def history_and_baseline(history: pd.DataFrame | None, baseline: BaselineBundle,
 
 def backtest_predictions(report: BacktestReport, target: str, *, dark: bool = False) -> go.Figure:
     t = theme_for(dark)
-    oof = report.oof_predictions[report.oof_predictions["target"] == target].sort_values("timestamp")
+    oof = report.oof_predictions[report.oof_predictions["target"] == target]
+    if "horizon" in oof.columns:  # multi-horizon walk-forward: plot the 1-month-ahead path (presentation only)
+        oof = oof[oof["horizon"] == 1]
+    oof = oof.sort_values("timestamp")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=oof["timestamp"], y=oof["actual"], name="Actual", mode="lines", line=dict(color=t.actual, width=2)))
     fig.add_trace(go.Scatter(x=oof["timestamp"], y=oof["predicted"], name="Model (out-of-fold)", mode="lines",

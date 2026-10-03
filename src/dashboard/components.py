@@ -31,6 +31,7 @@ from .state import (
     READY,
     VALIDATION_ERROR,
     DashboardState,
+    ErrorInfo,
     slider_key,
 )
 
@@ -40,6 +41,17 @@ KIND_LABELS = {"fixture": "fixture", "behavioral-mock": "behavioral mock", "real
 # --------------------------------------------------------------------------- #
 # Provenance
 # --------------------------------------------------------------------------- #
+
+
+def data_provenance_line(baseline: Any) -> None:
+    """Data provenance is separate from implementation provenance: a real pipeline may run on synthetic data."""
+    if baseline is None:
+        return
+    kind = baseline.data_kind
+    label = {"synthetic": ":orange-badge[SYNTHETIC DATA]", "reported": ":green-badge[REPORTED DATA]",
+             "interpolated": ":orange-badge[INTERPOLATED DATA]"}.get(kind, kind)
+    st.caption(f"{label} Input company `{baseline.company_id}` · baseline `{baseline.baseline_id}` · model "
+               f"`{baseline.model_id}` · data kind **{kind}**; numbers describe this {kind} dataset, not a real company.")
 
 
 def provenance_banner(services: Services) -> None:
@@ -62,7 +74,9 @@ def provenance_banner(services: Services) -> None:
             icon="⚠️",
         )
     else:
-        st.success(f"All bound providers are real ({services.mode} mode).", icon="✅")
+        st.success(f"All bound computational providers are real ({services.mode} mode). Data provenance is shown "
+                   "separately below; team acceptance of the all-real milestone (C4) is not recorded in the app.",
+                   icon="✅")
     st.caption(services.provenance_summary())
 
 
@@ -180,8 +194,11 @@ def backtest_panel(state: DashboardState, dark: bool) -> None:
         "Seasonal-naive RMSE": st.column_config.NumberColumn(format="%.2f"),
     })
     n_folds = report.folds["fold_id"].nunique()
-    st.caption(f"Pooled out-of-fold metrics over {n_folds} expanding-window folds; units follow each target "
-               f"(tCO₂e or GBP per month). Feature spec `{report.feature_spec_id}`.")
+    horizons = (f" and horizons 1–{int(report.oof_predictions['horizon'].max())}"
+                if "horizon" in report.oof_predictions.columns and len(report.oof_predictions) else "")
+    st.caption(f"Pooled out-of-fold metrics over {n_folds} expanding-window forecast origins{horizons}; units follow "
+               f"each target (tCO₂e or GBP per month). Model family `{report.model_family}`, feature spec "
+               f"`{report.feature_spec_id}`." + (" The chart shows the 1-month-ahead path." if horizons else ""))
     targets = [t for t in report.aggregate_metrics]
     tabs = st.tabs([charts.TARGET_LABELS.get(t, t) for t in targets])
     for tab, target in zip(tabs, targets):
@@ -427,7 +444,7 @@ def monthly_panel(state: DashboardState, dark: bool) -> None:
 
 
 def optional_panels(state: DashboardState, services: Services, request: AnalysisRequest, dark: bool) -> None:
-    st.subheader("Optional capabilities (P1 preview)")
+    st.subheader("Risk, forecast explanation, benchmark and scenarios")
     caps = services.capabilities
     analysis = state.analysis
     tabs = st.tabs(["Risk", "Forecast SHAP", "Benchmark", "Scenario comparison"])
@@ -495,13 +512,67 @@ def optional_panels(state: DashboardState, services: Services, request: Analysis
                 st.plotly_chart(charts.benchmark_position(b, dark=dark), width="stretch")
                 st.caption(
                     f"{b.peer_count} peers · source `{b.source_id}` ({'synthetic' if b.is_synthetic else 'reported'}) · "
-                    f"peer period {b.period_start} – {b.period_end} · coverage `{b.scope_coverage}` · scope 2 "
+                    f"forecast period compared {b.period_start} – {b.period_end} · coverage `{b.scope_coverage}` · scope 2 "
                     f"`{b.scope2_method}` · basis `{b.comparison_basis}` (forecast compared with historical peers)."
                 )
 
     with tabs[3]:
-        if not caps.scenario_compare_available:
-            st.info(f"Scenario comparison is unavailable: {services.unavailable.get('scenario_compare', '')}.", icon="⛔")
+        scenario_panel(state, services, request)
+
+
+def scenario_panel(state: DashboardState, services: Services, request: AnalysisRequest) -> None:
+    """Conservative / balanced / aggressive selections from WS2's policy on one analysis."""
+    if not services.capabilities.scenario_compare_available:
+        st.info(f"Scenario comparison is unavailable: {services.unavailable.get('scenario_compare', '')}.", icon="⛔")
+        return
+    analysis = state.analysis
+    if analysis is None or not request.risk_enabled:
+        st.caption("Enable **Risk** in the sidebar and optimize: all three policies rank the same evaluated risk pool.")
+        return
+    result = state.scenarios(services)
+    if isinstance(result, ErrorInfo):
+        error_box(result.kind, result.error_type, result.message)
+        return
+    if not result:
+        return
+    opt = analysis.optimization
+    rows = []
+    for tol, rec in result.items():
+        row: dict[str, Any] = {"Tolerance": tol, "Strategy ID": rec.strategy_id or "none", "Risk status": rec.risk_status}
+        if rec.strategy_id is not None:
+            sim = opt.strategies[rec.strategy_id]
+            m = sim.metrics
+            risk = analysis.risk_results.get(rec.strategy_id)
+            row.update({
+                "Emissions (tCO₂e)": m["total_co2e_tco2e"], "CO₂ reduction (%)": (m["co2_reduction_ratio"] or 0) * 100,
+                "Cumulative profit (£)": m["total_profit_gbp"], "Gross outlay (£)": m["total_cost_gbp"],
+                "P(target)": None if risk is None else risk.summary["target_probability"] * 100,
+                "P(all constraints)": None if risk is None else risk.summary["joint_feasibility_probability"] * 100,
+                **{ACTION_LABELS[n]: getattr(sim.config, n) for n in ACTION_NAMES},
+            })
+        rows.append(row)
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={
+        "Emissions (tCO₂e)": st.column_config.NumberColumn(format="%.1f"),
+        "CO₂ reduction (%)": st.column_config.NumberColumn(format="%.1f%%"),
+        "Cumulative profit (£)": st.column_config.NumberColumn(format="£%,.0f"),
+        "Gross outlay (£)": st.column_config.NumberColumn(format="£%,.0f"),
+        "P(target)": st.column_config.NumberColumn(format="%.1f%%"),
+        "P(all constraints)": st.column_config.NumberColumn(format="%.1f%%"),
+        **{ACTION_LABELS[n]: st.column_config.NumberColumn(format="%.3f") for n in ACTION_NAMES},
+    })
+    picked = {rec.strategy_id for rec in result.values()}
+    pool = len(analysis.risk_results)
+    st.caption(
+        f"Same baseline, constraints, optimization run and risk pool ({pool} strategies, "
+        f"{next(iter(analysis.risk_results.values())).n_simulations if pool else 0:,} trials each) for every policy; "
+        "selection is WS2's recommendation policy. "
+        + ("All three tolerances pick the same plan for these inputs. " if len(picked) == 1 else "")
+        + "Policies are compared, not ranked: no tolerance dominates another. Probabilities are finite-trial "
+        "estimates under illustrative uncertainty."
+    )
+    for tol, rec in result.items():
+        if rec.reason:
+            st.caption(f"**{tol}**: {rec.reason}")
 
 
 # --------------------------------------------------------------------------- #

@@ -25,6 +25,12 @@ Contract version is `1.0.0`. Names, types, units, action meanings, result status
 | D17 | Mock chat mode is explicit (`CHATBOT_PROVIDER=mock`), labelled, and never a fallback for a failed remote call | Prevents mock output being mistaken for model output | WS4 |
 | D18 | Chat UI is a floating bottom-left bubble opening a panel inside the Streamlit dashboard | Keeps the assistant available without leaving the dashboard | WS4 |
 | D19 | LLM interprets and explains; allowlisted tools through existing services compute; chat what-if is a preview applied by an explicit button | Preserves single-simulator and ownership boundaries | WS2 + WS4 |
+| D20 | The configured company CSV enters only through one explicit import adapter (`config/company_import.json`); problems are rejected, not repaired; unreported activities are 0 with a recorded reason, scopes never | Keeps data lineage explicit | WS1 + WS4 |
+| D21 | EUR money converts to GBP at a configured fixed rate (0.85, illustrative) and EBITDA is the operating-profit series for the supply-chain CSV | The contract is GBP and the CSV reports no depreciation; both are visible assumptions | WS1 + WS2 + WS4 |
+| D22 | WS1 artifacts are trained once and cached by an identity hash of data, mapping, settings, WS1 code and library versions | No training on reruns; a stale model is never reused | WS1 + WS4 |
+| D23 | Company-specific WS2 assumptions and WS3 benchmark config bind only to the real CSV-backed forecast | A baseline is never paired with another company's economics | WS2 + WS3 + WS4 |
+| D24 | Activities use a deterministic seasonal driver policy and scopes are reconciled to WS1's total forecast | WS1 forecasts only totals; WS2 needs activities and scopes | WS1 + WS2 |
+| D25 | SHAP explains WS1 tree models in their relative raw output space | Explains the deployed model honestly; not tonnes or GBP | WS1 + WS4 |
 
 ## Decisions to resolve during implementation
 

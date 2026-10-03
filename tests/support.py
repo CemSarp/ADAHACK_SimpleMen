@@ -146,3 +146,18 @@ __all__ = [
     "make_baseline",
     "snapshot",
 ]
+
+
+def hide_ws1_forecast(monkeypatch) -> None:
+    """Make the WS1 forecast module look absent, to test the explicit missing-provider path
+    now that WS1 is integrated."""
+    from src.integration import real_providers
+
+    original = real_providers.importlib.import_module
+
+    def fake(name, *args, **kwargs):
+        if name == "src.forecasting.provider":
+            raise ModuleNotFoundError(f"No module named {name!r}", name=name)
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(real_providers.importlib, "import_module", fake)

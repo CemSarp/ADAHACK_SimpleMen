@@ -2,28 +2,31 @@
 
 ## Current project plan
 
-CarbonOpt AI is a single-company decision tool built with **Streamlit + Plotly**. Specs live in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md). The WS4 dashboard is integrated with the real WS2 action engine, optimizer and recommendation. WS1 (forecasting) and WS3 (risk, benchmark) are not integrated yet, so the working setup is a **labelled hybrid**: a fixture baseline with real WS2 computation. It is not the all-real C4 MVP. Handoffs: [WS2](docs/handoffs/WS2_HANDOFF.md) · [WS4](docs/handoffs/WS4_DASHBOARD_HANDOFF.md).
+CarbonOpt AI is a single-company decision tool built with **Streamlit + Plotly**. Specs live in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md). All four workstreams are integrated: `real` mode runs WS1 forecasting from the configured company CSV, WS2 simulation/optimization/recommendation, WS3 risk and benchmarking, and the WS4 dashboard, with every provider real. The input CSV is **synthetic** and labelled as such. Team acceptance of the all-real C4 milestone has not been recorded. Handoffs: [integration](docs/handoffs/INTEGRATION_HANDOFF.md) · [WS2](docs/handoffs/WS2_HANDOFF.md) · [WS3](carbonopt-ai-docs/docs/handoffs/ws3/WS3_DELIVERY.md) · [WS4](docs/handoffs/WS4_DASHBOARD_HANDOFF.md).
 
-For Workstream 3 execution, use only [the five prompts for the last four hours](carbonopt-ai-docs/docs/workstreams/03_EXECUTION_PROMPTS_4_HOURS.md). Project specifications and supporting WS3 handoffs are kept in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md).
-
-### Run the dashboard (from the repository root, Python 3.11)
+### Run the integrated application (from the repository root, Python 3.11)
 
 ```bash
 python3.11 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements-p1.txt       # P0 stack + WS1 libraries + shap
+.venv/bin/python -m src.forecasting.train                     # optional: pre-train WS1 (about 6 min cold, then cached)
 .venv/bin/python -m pytest
-CARBONOPT_PROVIDER_MODE=hybrid .venv/bin/python -m streamlit run app.py
+CARBONOPT_PROVIDER_MODE=real .venv/bin/python -m streamlit run app.py
 ```
 
-`hybrid` opens the **Fixture forecast + real WS2** preset. You can also pick it in the sidebar: *Provider mode → hybrid → Hybrid configuration*.
+macOS: XGBoost and LightGBM need the OpenMP runtime (`brew install libomp`). Without it WS1 reports a typed error naming this fix.
 
-| Mode | Baseline | Simulator, constraints | Optimizer, recommendation | Risk / SHAP / benchmark |
-|---|---|---|---|---|
-| `mock` (default) | fixture | behavioral mock | behavioral mock (random search) | fixtures |
-| `hybrid` (WS2 preset) | fixture (labelled) | **real WS2** | **real WS2** (NSGA-II, Pareto, P0 policy) | unavailable, with the reason shown |
-| `real` | WS1 required | real WS2 | real WS2 | WS1/WS3 when published |
+- **Input:** `data/synthetic_data.csv` (synthetic, EUR, 2001–2025; provenance in `data/synthetic_data_provenance.json`), imported through the explicit mapping in `config/company_import.json` (fixed illustrative 0.85 GBP/EUR; EBITDA used as operating profit).
+- **Configuration:** `config/integration.json` names the CSV, mapping, WS1 settings and the company-specific assumption, uncertainty and benchmark files. Set `CARBONOPT_CONFIG` to use another file.
+- **Training:** WS1 models train on the first baseline request (or with the command above). They are stored under `models/ws1/<model_id>/` (git-ignored) and reused while the data, mapping, settings, WS1 code and library versions are unchanged.
+- **Defaults** for this company: budget £20M, cumulative profit floor £30M, 10% CO₂ reduction. Optimize returns a feasible frontier; a £0 budget demonstrates the infeasible state.
+- **Headless reproduction with timings:** `.venv/bin/python scripts/run_integrated_analysis.py`.
 
-`real` stops with *"required P0 providers are not available … forecast: src.forecasting.provider is not implemented yet"* until WS1 publishes its provider. It never substitutes a fixture. The sidebar's default inputs (budget £500,000, cumulative profit floor £1,000,000, 20% CO₂ reduction, seed 42, 2,048 evaluations) are a feasible demonstration: the real search returns a 289-point frontier in about 12 s on the reference laptop. A £0 budget demonstrates the infeasible, no-recommendation state. The WS2 handoff has details.
+| Mode | Baseline | Simulator, optimizer | Risk / SHAP / benchmark |
+|---|---|---|---|
+| `mock` (default) | fixture | behavioral mocks | fixtures |
+| `hybrid` (preset) | fixture (labelled, demo company) | real WS2 with demo assumptions | WS3 risk/benchmark real, SHAP disabled |
+| `real` | **WS1 from the CSV** | real WS2 with the company's assumptions | WS3 risk, WS1 SHAP, WS3 benchmark (unavailable: no compatible logistics peers) |
 
 ### Assistant (chatbot)
 

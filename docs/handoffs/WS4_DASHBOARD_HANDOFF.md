@@ -1,5 +1,7 @@
 # WS4 Handoff: Dashboard, Integration and C0 Foundation
 
+> **Update (branch `feat/integration-all-workstreams`):** all four workstreams are integrated and `real` mode runs every provider for real on the synthetic company CSV. The current wiring, configuration, verification and review list are in [INTEGRATION_HANDOFF.md](INTEGRATION_HANDOFF.md); sections below describe earlier milestones.
+
 Branch: `feat/ws4-dashboard`, merged to `main` in PR #2; integrated with WS2 on `workstream2` (merge pending review).
 Contract version: `1.0.0`. Fixture revision: `c0-fixtures-r1`.
 

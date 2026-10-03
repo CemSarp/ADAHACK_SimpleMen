@@ -10,14 +10,16 @@ Entry points (repo-relative modules):
   optimizer  src.optimization.optimizer.optimize_strategies
              src.optimization.constraints.evaluate_constraints
              src.optimization.recommendation.recommend_strategy
-  forecast   src.forecasting.provider.create_forecast_provider()   (WS1 to publish)
-  risk       src.risk.provider.create_risk_provider()              (WS3 to publish)
-  benchmark  src.benchmarking.provider.create_benchmark_provider() (WS3 to publish)
-  shap       src.explainability.provider.create_explanation_provider() (WS1 to publish)
+  forecast   src.forecasting.provider.create_forecast_provider()   (WS1 ml_core via CSV import adapter)
+  risk       src.risk.provider.create_risk_provider(path)          (WS3)
+  benchmark  src.benchmarking.provider.create_benchmark_provider(path) (WS3)
+  shap       src.explainability.provider.create_explanation_provider() (WS1 trees via shap)
 
-The four factory entry points are proposed integration points: the domain
-signatures need trained models, uncertainty specs and data sources that only
-their owners can bind. They require producer review (see the WS4 handoff).
+Company binding: when the forecast slot is the real CSV-backed WS1 provider,
+the simulator, risk and benchmark providers load the company-specific files
+named in config/integration.json (assumptions, uncertainty, benchmark). With a
+fixture forecast they keep the demo files, so a baseline is never paired with
+another company's assumptions.
 """
 
 from __future__ import annotations
@@ -82,9 +84,9 @@ def load_action_assumptions(path: Path | None = None) -> ActionAssumptions:
 class RealSimulatorProvider:
     MODULE = "src.actions.engine"
 
-    def __init__(self) -> None:
+    def __init__(self, assumptions_path: Path | None = None) -> None:
         self._simulate: Callable[..., SimulationResult] = _load_attr(self.MODULE, "simulate_strategy")
-        self._assumptions = load_action_assumptions()
+        self._assumptions = load_action_assumptions(assumptions_path)
         a = self._assumptions
         self.info = ProviderInfo(
             slot="simulator",
@@ -136,10 +138,10 @@ class RealOptimizerProvider:
         return self._recommend(optimization, risk_results=risk_results, tolerance=tolerance)
 
 
-def _factory_provider(module_name: str, factory: str) -> object:
+def _factory_provider(module_name: str, factory: str, *args: Any) -> object:
     create = _load_attr(module_name, factory)
     try:
-        provider = create()
+        provider = create(*args)
     except ContractValidationError as exc:  # defined config failure only; other errors surface
         raise ProviderUnavailable(f"{module_name}.{factory}() configuration is invalid: {exc}") from exc
     info = getattr(provider, "info", None)
@@ -150,18 +152,31 @@ def _factory_provider(module_name: str, factory: str) -> object:
     return provider
 
 
-REAL_FACTORIES: dict[str, Callable[[], object]] = {
-    "forecast": lambda: _factory_provider("src.forecasting.provider", "create_forecast_provider"),
-    "simulator": RealSimulatorProvider,
-    "optimizer": RealOptimizerProvider,
-    "risk": lambda: _factory_provider("src.risk.provider", "create_risk_provider"),
-    "shap": lambda: _factory_provider("src.explainability.provider", "create_explanation_provider"),
-    "benchmark": lambda: _factory_provider("src.benchmarking.provider", "create_benchmark_provider"),
-}
+def _company_config() -> Any:
+    from .config import IntegrationConfig
+
+    try:
+        return IntegrationConfig.load()
+    except ContractValidationError as exc:
+        raise ProviderUnavailable(f"integration config is invalid: {exc}") from exc
 
 
-def create_real_provider(slot: str) -> object:
-    factory = REAL_FACTORIES.get(slot)
-    if factory is None:
-        raise ProviderUnavailable(f"no real provider is defined for slot {slot!r}")
-    return factory()
+def create_real_provider(slot: str, *, company_bound: bool = False) -> object:
+    """Bind the real provider for `slot`; `company_bound` selects the CSV company's files."""
+    company = _company_config() if company_bound else None
+    if slot == "forecast":
+        return _factory_provider("src.forecasting.provider", "create_forecast_provider")
+    if slot == "simulator":
+        return RealSimulatorProvider(Path(company.assumptions) if company else None)
+    if slot == "optimizer":
+        return RealOptimizerProvider()
+    if slot == "risk":
+        # WS3's loader resolves relative paths against the working directory; pass a repo-rooted path.
+        return _factory_provider("src.risk.provider", "create_risk_provider",
+                                 *([REPO_ROOT / company.uncertainty] if company else []))
+    if slot == "shap":
+        return _factory_provider("src.explainability.provider", "create_explanation_provider")
+    if slot == "benchmark":
+        return _factory_provider("src.benchmarking.provider", "create_benchmark_provider",
+                                 *([company.benchmark] if company else []))
+    raise ProviderUnavailable(f"no real provider is defined for slot {slot!r}")

@@ -209,7 +209,10 @@ def test_hybrid_provenance_names_every_provider(hybrid, bundle):
     assert bundle.recommendation.provenance.is_mock
 
 
-def test_real_mode_fails_explicitly_while_ws1_is_missing():
+def test_real_mode_fails_explicitly_while_ws1_is_missing(monkeypatch):
+    from tests.support import hide_ws1_forecast
+
+    hide_ws1_forecast(monkeypatch)
     with pytest.raises(ProviderConfigurationError) as exc:
         create_services(mode="real")
     assert exc.value.missing == ("forecast",)
