@@ -33,7 +33,6 @@ GRID_TASK_KWH = 100.0  # one-hour task at a constant 100 kW
 GRID_MAX_AGE = dt.timedelta(minutes=30)  # same as the fetch cache TTL
 LONDON = "Europe/London"
 SCOPES_EXPLAINED = (
-    "**What are scopes?**\n"
     "- **Scope 1:** fuel the company burns itself, e.g. diesel in its trucks.\n"
     "- **Scope 2:** electricity it buys (the power station burns the fuel; the company uses the power).\n"
     "- **Scope 3:** its wider supply chain, e.g. suppliers, subcontractors and business travel.\n\n"
@@ -72,7 +71,8 @@ def _reference_card(ref: dict) -> None:
         st.metric("Revenue", f"£{rows['revenue']['value']:,.1f}m", border=True)
         st.metric("Emissions, Scope 1 + 2 (tCO2e)", f"{rows['emissions_scope1_and_2_total']['value']:,}", border=True)
         st.metric("Electricity, non-transport (MWh)", f"{rows['electricity_non_transport']['value']:,}", border=True)
-    st.info(SCOPES_EXPLAINED, icon=":material/help:")
+    with st.expander("What are scopes?", icon=":material/help:"):
+        st.markdown(SCOPES_EXPLAINED)
     st.caption(f"**Historical public reference; separate from the synthetic optimization company.** Reported period "
                f"{ref['period_start']} to {ref['period_end']} · retrieved {ref['retrieved_at']}.")
     with st.expander("All reported figures"):

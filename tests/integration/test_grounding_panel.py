@@ -62,7 +62,7 @@ def test_section_loads_offline_with_sources_and_historical_label(app):
                 "cloud-carbon-footprint"):
         assert url in text, url
     assert "planned; current cloud estimates illustrative" in text
-    assert any("What are scopes?" in i and "Scope 2:" in i for i in _texts(app.info))
+    assert "What are scopes?" in [e.label for e in app.expander] and "**Scope 2:**" in text
     assert "7_400_4000_5_1" in text and "gross energy-cost savings before capex/opex" in text
     assert _metric(app, SAVING) == "1,014.74" and "2026-factor scenario using FY2024 activity" in text
     assert _metric(app, "Energy-cost saving per year (£)") == "1,937,125"
