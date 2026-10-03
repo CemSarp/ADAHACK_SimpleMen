@@ -1,6 +1,6 @@
 # CarbonOpt edge cases and acceptance checks
 
-Use [CENTER.md](../carbonopt-team/CENTER.md) for the canonical definitions. These checks replace the old half-hour scheduling cases.
+Use [CENTER.md](../team-execution/CENTER.md) for the canonical definitions. These checks replace the old half-hour scheduling cases.
 
 | Area | Case | Expected behaviour | Owner |
 |---|---|---|---|

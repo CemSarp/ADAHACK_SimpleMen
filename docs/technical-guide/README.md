@@ -1,8 +1,8 @@
 # CarbonOpt project guide
 
-These files now describe **CarbonOpt with Django + Plotly**, matching the latest technical implementation plan and confirmed team decision. The `docs/flexvalue/` directory name is retained so existing links continue to work; it no longer defines a scheduling product.
+These files now describe **CarbonOpt with Django + Plotly**, matching the latest technical implementation plan and confirmed team decision. Technical guidance lives in `docs/technical-guide/`; shared coordination and role plans live in `docs/team-execution/`.
 
-**Start at [the shared team center](../carbonopt-team/CENTER.md).** It is authoritative for contracts, ownership, priorities and integration gates. The four linked role files are the execution plans.
+**Start at [the shared team center](../team-execution/CENTER.md).** It is authoritative for contracts, ownership, priorities and integration gates. The four linked role files are the execution plans.
 
 ## Supporting guides
 

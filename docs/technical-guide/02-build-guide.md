@@ -1,15 +1,15 @@
 # CarbonOpt parallel build guide
 
-Follow [CENTER.md](../carbonopt-team/CENTER.md) and the four role files. This guide replaces the earlier scheduling implementation plan.
+Follow [CENTER.md](../team-execution/CENTER.md) and the four role files. This guide replaces the earlier scheduling implementation plan.
 
 ## Four owners
 
 | Owner | Execution file | First deliverable |
 |---|---|---|
-| A — Data/ML | [Person A](../carbonopt-team/PERSON_A_DATA_ML.md) | Synthetic monthly history and a forecast-shaped fixture |
-| B — Decision science | [Person B](../carbonopt-team/PERSON_B_DECISION_ENGINE.md) | Deterministic central action simulator |
-| C — Risk/data | [Person C](../carbonopt-team/PERSON_C_RISK_DATA.md) | Independent numerical checks and agreed uncertainty hook |
-| D — Product/integration | [Person D](../carbonopt-team/PERSON_D_PRODUCT_INTEGRATION.md) | Shared contracts and Django skeleton |
+| A — Data/ML | [Person A](../team-execution/PERSON_A_DATA_ML.md) | Synthetic monthly history and a forecast-shaped fixture |
+| B — Decision science | [Person B](../team-execution/PERSON_B_DECISION_ENGINE.md) | Deterministic central action simulator |
+| C — Risk/data | [Person C](../team-execution/PERSON_C_RISK_DATA.md) | Independent numerical checks and agreed uncertainty hook |
+| D — Product/integration | [Person D](../team-execution/PERSON_D_PRODUCT_INTEGRATION.md) | Shared contracts and Django skeleton |
 
 ## Implementation order
 

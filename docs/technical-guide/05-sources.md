@@ -4,7 +4,7 @@
 
 1. **CarbonOpt_AI_Technical_Implementation_Plan.pdf** supplied by the team: monthly synthetic company data, forecasting, central action simulation, NSGA-II, risk, SHAP, benchmarking and optional LLM tools.
 2. **User-confirmed framework choice:** Django + Plotly replaces the PDF's Streamlit example.
-3. [CENTER.md](../carbonopt-team/CENTER.md): current shared contracts, units, ownership and execution gates, with four linked role plans.
+3. [CENTER.md](../team-execution/CENTER.md): current shared contracts, units, ownership and execution gates, with four linked role plans.
 4. **G-Research.docx:** original challenge and judging criteria. The challenge does not independently require any particular ML/optimisation library.
 
 The earlier CarbonOpt concept PDF is background; where it differs, follow the latest technical plan and confirmed framework decision. Source PDFs were supplied in the user's Downloads directory; the team center describes their content so agents do not require access to another teammate's personal filesystem.

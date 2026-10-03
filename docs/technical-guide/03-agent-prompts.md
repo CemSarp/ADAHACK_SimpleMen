@@ -1,12 +1,12 @@
 # CarbonOpt coding-agent entry point
 
-This replaces all previous FlexValue prompts. Read [CENTER.md](../carbonopt-team/CENTER.md), then use exactly one owner's linked role file. Those files contain the current A1–A3, B1–B3, C1–C3 and D1–D3 iterations; do not maintain another conflicting copy here.
+This replaces all previous FlexValue prompts. Read [CENTER.md](../team-execution/CENTER.md), then use exactly one owner's linked role file. Those files contain the current A1–A3, B1–B3, C1–C3 and D1–D3 iterations; do not maintain another conflicting copy here.
 
 ## Shared context to paste first
 
 ```text
 We are four people building CarbonOpt in roughly eight hours using Django and
-Plotly. Follow docs/carbonopt-team/CENTER.md and my assigned role file.
+Plotly. Follow docs/team-execution/CENTER.md and my assigned role file.
 Read applicable repository instructions and inspect current files/Git state.
 
 Scope: one synthetic company's monthly history; a 12-month CO2e/profit forecast
@@ -23,7 +23,7 @@ Risk evaluation receives the actual constraints explicitly. Preserve baseline an
 candidate IDs, simulation assumptions, feasible/no-solution states and source labels.
 
 Do not implement the earlier FlexValue tariff scheduler, SciPy MILP, job deadlines,
-or carbon-price scheduling objective. The legacy directory name is only a URL.
+or carbon-price scheduling objective. Use the current technical-guide and team-execution directories.
 Do not use stored tariff JSON as company training data or peer benchmarks.
 
 Work only on my assigned iteration/files. Explain important choices and run
@@ -38,10 +38,10 @@ actually performed, blockers/limitations and the next handoff. Stop at that gate
 
 ## Choose the role and next iteration
 
-- [A: data, forecasting, backtesting, SHAP](../carbonopt-team/PERSON_A_DATA_ML.md).
-- [B: shared action engine, constraints, NSGA-II](../carbonopt-team/PERSON_B_DECISION_ENGINE.md).
-- [C: independent checks, Monte Carlo, risk recommendation, benchmarks](../carbonopt-team/PERSON_C_RISK_DATA.md).
-- [D: shared contracts, Django, Plotly, integration](../carbonopt-team/PERSON_D_PRODUCT_INTEGRATION.md).
+- [A: data, forecasting, backtesting, SHAP](../team-execution/PERSON_A_DATA_ML.md).
+- [B: shared action engine, constraints, NSGA-II](../team-execution/PERSON_B_DECISION_ENGINE.md).
+- [C: independent checks, Monte Carlo, risk recommendation, benchmarks](../team-execution/PERSON_C_RISK_DATA.md).
+- [D: shared contracts, Django, Plotly, integration](../team-execution/PERSON_D_PRODUCT_INTEGRATION.md).
 
 D establishes the shared contract checkpoint first. Then the four initial iterations proceed in parallel against the same fixture. Integrate P0 before enabling P1; reserve the final two hours for fixes and rehearsal.
 

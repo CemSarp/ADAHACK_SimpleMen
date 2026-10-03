@@ -2,7 +2,7 @@
 
 ## Current project plan
 
-Build **CarbonOpt with Django + Plotly**. Start with [the shared team center](docs/carbonopt-team/CENTER.md) and its four role files. The [supporting guides](docs/flexvalue/README.md) now describe this same CarbonOpt plan; their legacy directory name is retained for existing links.
+Build **CarbonOpt with Django + Plotly**. Start with [the shared team center](docs/team-execution/CENTER.md) and its four role files. The [supporting guides](docs/technical-guide/README.md) now describe this same CarbonOpt plan; the folders are named by purpose: technical guidance and team execution.
 
 ## Getting Started
 

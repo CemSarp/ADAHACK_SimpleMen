@@ -1,6 +1,6 @@
 # CarbonOpt architecture
 
-Authoritative contracts and numerical rules: [CENTER.md](../carbonopt-team/CENTER.md). This replaces the earlier FlexValue architecture at the same URL.
+Authoritative contracts and numerical rules: [CENTER.md](../team-execution/CENTER.md). This is the current CarbonOpt architecture guide.
 
 ## Product and pipeline
 
