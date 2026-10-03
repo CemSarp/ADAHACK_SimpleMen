@@ -1,6 +1,6 @@
 """WS3 risk demo: 100 trials over the BEHAVIORAL MOCK simulator (WS2 engine absent).
 
-Run from the repo root:  .venv/bin/python scripts/demo_ws3_risk.py
+Run from the repo root:  python scripts/demo_ws3_risk.py
 Production default stays RiskConfig().n_simulations == 1000.
 """
 

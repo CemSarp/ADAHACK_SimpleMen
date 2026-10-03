@@ -1,142 +1,271 @@
-# ADAHACK_SimpleMen
+<div align="center">
 
-## Current project plan
+# 🌱 CarbonOpt AI
 
-CarbonOpt AI is a single-company decision tool built with **Streamlit + Plotly**. Specs live in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md). All four workstreams are integrated: `real` mode runs WS1 forecasting from the configured company CSV, WS2 simulation/optimization/recommendation, WS3 risk and benchmarking, and the WS4 dashboard, with every provider real. The input CSV is **synthetic** and labelled as such. Team acceptance of the all-real C4 milestone has not been recorded. Handoffs: [integration](docs/handoffs/INTEGRATION_HANDOFF.md) · [WS2](docs/handoffs/WS2_HANDOFF.md) · [WS3](carbonopt-ai-docs/docs/handoffs/ws3/WS3_DELIVERY.md) · [WS4](docs/handoffs/WS4_DASHBOARD_HANDOFF.md).
+### Decide how to cut emissions without breaking the budget.
 
-### Run the integrated application (from the repository root, Python 3.11)
+A decision-support dashboard that forecasts a company's emissions and profit, simulates six decarbonisation actions, and searches for the best trade-offs under real budget, profit and CO₂ constraints.
+
+[![CI](https://github.com/alimert05/ADAHACK_SimpleMen/actions/workflows/ci.yml/badge.svg)](https://github.com/alimert05/ADAHACK_SimpleMen/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
+![Streamlit](https://img.shields.io/badge/streamlit-1.65-FF4B4B?logo=streamlit&logoColor=white)
+![Plotly](https://img.shields.io/badge/plotly-7.1-3F4F75?logo=plotly&logoColor=white)
+![Optimizer](https://img.shields.io/badge/optimizer-NSGA--II%20(pymoo)-2E7D32)
+![Data](https://img.shields.io/badge/data-synthetic-orange)
+
+**Built by Team SimpleMen for ADAHACK.**
+
+[Quick start](#-quick-start) · [How it works](#-how-it-works) · [Run modes](#-provider-modes) · [Chatbot](#-assistant-chatbot) · [Project layout](#-project-layout) · [Docs](#-documentation)
+
+</div>
+
+---
+
+## ✨ What it does
+
+| | Capability | Detail |
+|---|---|---|
+| 📈 | **Baseline forecast** | 12-month business-as-usual emissions and profit, with a temporal backtest. |
+| 🎛️ | **What-if simulator** | Dial six actions between 0% and 100% and see CO₂, profit, spend and net cash change instantly. |
+| 🧬 | **Constrained optimisation** | NSGA-II searches for the emissions/profit Pareto frontier under your budget, profit floor and CO₂ target. |
+| 🎯 | **Recommendation** | Picks one strategy from the frontier with a deterministic policy, or says plainly when nothing is feasible. |
+| 🎲 | **Monte Carlo risk** | Probability that a strategy still meets the budget and CO₂ target when assumptions are uncertain. |
+| 🏁 | **Peer benchmark** | Compares the forecast against an offline snapshot of peer companies. |
+| 💬 | **Assistant** | A floating chatbot that explains results and runs the same tools as the UI. |
+| 🔍 | **Provenance everywhere** | Every panel says whether its numbers are real, fixture or mock. Nothing is silently faked. |
+
+### The six actions
+
+`renewable_energy` · `ev_adoption` · `building_efficiency` · `travel_reduction` · `cloud_efficiency` · `supplier_transition`
+
+Each is a fraction in [0, 1]. The simulator is deterministic and accounts for capex, incremental opex, savings and the interactions between actions.
+
+> ⚠️ **All company data is synthetic**, and the action assumptions are illustrative and uncalibrated. The dashboard labels this wherever it matters. Treat results as a demonstration of the method, not as advice.
+
+---
+
+## 🚀 Quick start
+
+You need [Git](https://git-scm.com/downloads) and [Miniconda](https://docs.conda.io/en/latest/miniconda.html) (or Anaconda).
 
 ```bash
-python3.11 -m venv .venv
-.venv/bin/python -m pip install -r requirements-p1.txt       # P0 stack + WS1 libraries + shap
-.venv/bin/python -m src.forecasting.train                     # optional: pre-train WS1 (about 6 min cold, then cached)
-.venv/bin/python -m pytest
-CARBONOPT_PROVIDER_MODE=real .venv/bin/python -m streamlit run app.py
+git clone https://github.com/alimert05/ADAHACK_SimpleMen.git
+cd ADAHACK_SimpleMen
+
+conda env create -f environment.yml      # creates the "adahack" env (Python 3.11)
+conda activate adahack
+python -m pip install -r requirements.txt   # pins streamlit, pymoo, pytest to the tested versions
+
+CARBONOPT_PROVIDER_MODE=hybrid python -m streamlit run app.py
 ```
 
-macOS: XGBoost and LightGBM need the OpenMP runtime (`brew install libomp`). Without it WS1 reports a typed error naming this fix.
+Open <http://localhost:8501>. Add `--server.port 8599` to change the port, or `--server.headless true` to skip opening a browser.
 
-- **Input:** `data/synthetic_data.csv` (synthetic, EUR, 2001–2025; provenance in `data/synthetic_data_provenance.json`), imported through the explicit mapping in `config/company_import.json` (fixed illustrative 0.85 GBP/EUR; EBITDA used as operating profit).
-- **Configuration:** `config/integration.json` names the CSV, mapping, WS1 settings and the company-specific assumption, uncertainty and benchmark files. Set `CARBONOPT_CONFIG` to use another file.
-- **Training:** WS1 models train on the first baseline request (or with the command above). They are stored under `models/ws1/<model_id>/` (git-ignored) and reused while the data, mapping, settings, WS1 code and library versions are unchanged.
-- **Defaults** for this company: budget £20M, cumulative profit floor £30M, 10% CO₂ reduction. Optimize returns a feasible frontier; a £0 budget demonstrates the infeasible state.
-- **Headless reproduction with timings:** `.venv/bin/python scripts/run_integrated_analysis.py`.
+**Try it:** the sidebar defaults (£500,000 budget, £1,000,000 cumulative profit floor, 20% CO₂ cut, seed 42, 2,048 evaluations) are a feasible demo. Click **Optimize** and the real search returns a 289-point frontier in a few seconds (about 6 s for the search alone on a laptop, more with charts). Set the budget to £0 to see the infeasible, no-recommendation state.
 
-| Mode | Baseline | Simulator, optimizer | Risk / SHAP / benchmark |
-|---|---|---|---|
-| `mock` (default) | fixture | behavioral mocks | fixtures |
-| `hybrid` (preset) | fixture (labelled, demo company) | real WS2 with demo assumptions | WS3 risk/benchmark real, SHAP disabled |
-| `real` | **WS1 from the CSV** | real WS2 with the company's assumptions | WS3 risk, WS1 SHAP, WS3 benchmark (unavailable: no compatible logistics peers) |
+Run `conda activate adahack` in every new terminal.
 
-### Assistant (chatbot)
+### Verify the install
 
-A floating assistant button sits at the bottom-left of the dashboard. By default it uses a labelled **MOCK MODEL** (rule-based, offline). The real language model is **not** run on your machine: it is a separate remote Ollama server running `llama3.1:8b`, and this repository only contains the client. No weights are downloaded and no server is installed by this project.
+```bash
+python -m pytest                              # 501 tests, ~85 s, fully offline
+python -m pytest tests/contracts tests/unit   # the fast subset CI runs first
+```
 
-Configuration is by environment variables (copy [`.env.example`](.env.example); the app does not auto-load it, so export the variables in your shell):
+One test is skipped by default: the live Ollama smoke test (see [Chatbot](#-assistant-chatbot)).
+
+---
+
+## 🔌 Provider modes
+
+The app is built around swappable **providers**: forecast, simulator, optimizer, risk, benchmark and SHAP. Set the mode with `CARBONOPT_PROVIDER_MODE` or pick it in the sidebar.
+
+| Mode | Baseline | Simulator, optimizer | Risk, benchmark | SHAP |
+|---|---|---|---|---|
+| `mock` (default) | fixture | behavioral mock | fixtures | fixture |
+| **`hybrid`** (recommended) | fixture, labelled | **real** (WS2, NSGA-II) | **real** (WS3) | unavailable |
+| `real` | WS1 forecast required | real | real | when WS1 publishes it |
+
+- **`hybrid`** is the working setup today. Its preset is *Fixture forecast + real WS2*, and you can switch to *Custom* in the sidebar to choose each provider yourself.
+- **`real`** does not start yet. It stops with *"required P0 providers are not available … src.forecasting.provider is not implemented yet"* until the WS1 forecast provider exists. It never substitutes a fixture.
+- The provenance line under the title always shows what is running, for example *Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: WS3 · SHAP: unavailable · Benchmark: WS3*.
+
+Other settings: `CARBONOPT_COMPANY_ID` (default `demo-company`) and `CARBONOPT_HYBRID_PRESET` (default `fixture-forecast-real-ws2`).
+
+---
+
+## 🧭 How it works
+
+```mermaid
+flowchart LR
+    UI["Streamlit dashboard<br/>app.py + src/dashboard"] --> REG["Provider registry<br/>src/integration/services.py"]
+    CHAT["Assistant<br/>src/llm"] --> REG
+    REG --> F["Forecast<br/>fixture today, WS1 later"]
+    REG --> S["Simulator<br/>src/actions"]
+    REG --> O["Optimizer + recommendation<br/>src/optimization"]
+    REG --> R["Monte Carlo risk<br/>src/risk"]
+    REG --> B["Peer benchmark<br/>src/benchmarking"]
+    F --> S
+    S --> O
+    S --> R
+    C["Shared contracts<br/>src/contracts"] -.- REG
+```
+
+1. **Baseline.** A 12-month emissions and profit forecast for the company.
+2. **Simulate.** The action engine applies a six-action configuration to the baseline and reports CO₂, operating profit, gross outlay and net cash.
+3. **Optimise.** NSGA-II explores action mixes that minimise emissions and maximise profit, drops candidates that break your constraints, and keeps the Pareto-optimal set.
+4. **Recommend.** A deterministic equal-weight policy picks one strategy. Risk results can inform the choice when enabled.
+5. **Stress-test.** Monte Carlo trials perturb the action assumptions and estimate the chance the strategy still meets its targets.
+
+All providers talk through typed, validated contracts in `src/contracts/`, which is why a mock can be swapped for the real implementation without touching the UI.
+
+---
+
+## 🖥️ The dashboard
+
+| Section | What you see |
+|---|---|
+| Company context and baseline | KPIs and the 12-month baseline |
+| Forecast evaluation | Temporal backtest of the forecast |
+| Optimized strategies | Interactive Pareto frontier, click a point to select it |
+| Selected strategy | KPIs, constraint checks and feasibility badges |
+| Manual what-if | Sliders for each action, using the same simulator |
+| Monthly baseline vs scenarios | Month-by-month emissions and profit |
+| Optional capabilities | Monte Carlo risk (with tolerance and trial count), peer benchmark, SHAP |
+| Assumptions and provenance | The numbers behind the simulator and where each output came from |
+
+---
+
+## 💬 Assistant (chatbot)
+
+A floating button at the bottom-left opens the assistant. By default it is a labelled **MOCK MODEL** (rule-based, offline). The real model is a **remote Ollama server** running `llama3.1:8b`. This repository only contains the client: it downloads no weights and installs no server.
+
+The model interprets language and explains results. It calls an allow-listed set of tools, and the app validates every call before running it through the same providers as the UI.
+
+The app does not auto-load `.env`, so export variables in your shell (copy [`.env.example`](.env.example) as a starting point):
+
+```bash
+# mock model (default)
+python -m streamlit run app.py
+
+# remote model, once you have an endpoint
+CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<your-ollama-host> \
+CARBONOPT_PROVIDER_MODE=hybrid python -m streamlit run app.py
+```
 
 | Variable | Meaning | Default |
-| --- | --- | --- |
+|---|---|---|
 | `CHATBOT_PROVIDER` | `mock` or `ollama` | `mock` |
 | `OLLAMA_BASE_URL` | Remote endpoint, required for `ollama` | none |
 | `OLLAMA_MODEL` | Model tag | `llama3.1:8b` |
 | `OLLAMA_TIMEOUT_SECONDS` / `OLLAMA_MAX_OUTPUT_TOKENS` | Limits | `60` / `512` |
 | `OLLAMA_API_KEY` | Optional gateway bearer token | none |
 
-```bash
-# mock model (default)
-.venv/bin/python -m streamlit run app.py
-
-# remote model, once an endpoint is supplied
-CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<your-ollama-host> .venv/bin/python -m streamlit run app.py
-```
-
-Use **Check connection** in the panel to test the endpoint. Remote failures are shown as errors; the mock is never used as a fallback. Details: [docs/CHATBOT_IMPLEMENTATION.md](docs/CHATBOT_IMPLEMENTATION.md).
-
-## Getting Started
-
-### Prerequisites
-
-- [Git](https://git-scm.com/downloads)
-- [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or [Anaconda](https://www.anaconda.com/download)
-
-Check that conda is installed:
+Use **Check connection** in the panel to test the endpoint. Remote failures are shown as errors and never fall back to the mock. To run the opt-in live test:
 
 ```bash
-conda --version
+RUN_OLLAMA_LIVE_SMOKE=1 CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<host> \
+python -m pytest tests/integration/test_ollama_live.py
 ```
 
-### 1. Clone the repository
+Details: [docs/CHATBOT_IMPLEMENTATION.md](docs/CHATBOT_IMPLEMENTATION.md).
+
+---
+
+## 🛠️ Command-line tools
+
+No UI needed. These use the fixture baseline in `tests/fixtures/v1/` and print their provenance.
 
 ```bash
-git clone https://github.com/alimert05/ADAHACK_SimpleMen.git
-cd ADAHACK_SimpleMen
+# WS2 backend: simulate one configuration, run the optimizer, or time the simulator
+python -m src.optimization.cli simulate
+python -m src.optimization.cli optimize --max-evaluations 256 --output optimization.json
+python -m src.optimization.cli profile
+
+# WS3 Monte Carlo risk demo (100 trials against the mock simulator)
+python scripts/demo_ws3_risk.py
 ```
 
-### 2. Create the conda environment
+Add `--help` to any subcommand for its flags.
 
-The project's dependencies are defined in [`environment.yml`](environment.yml). Create the `adahack` environment from it:
+### Forecasting and data generation
+
+These two scripts are standalone and not wired into the dashboard yet.
 
 ```bash
-conda env create -f environment.yml
+python synthetic_data_generation/synthetic_data_generator.py   # ~4 s, plots to synthetic_data_generation/temp_outputs/
+python ml_core/modelling.py                                    # ~40 s, forecast to ml_core/temp_outputs/modelling_results/
 ```
 
-### 3. Activate the environment
+The generator simulates 25 years of monthly logistics-company data. The modelling script compares a seasonal-naive baseline, Random Forest and (if installed) XGBoost, LightGBM and Prophet with walk-forward backtests, then forecasts the next three months of emissions and profit with prediction intervals. The `temp_outputs/` folders are git-ignored.
 
-```bash
-conda activate adahack
+---
+
+## 🧩 Project layout
+
+```text
+app.py                      Streamlit entry point
+src/
+├── contracts/              Typed schemas, validation, errors, provider protocols
+├── integration/            Provider registry (mock / real / hybrid) and pipeline
+├── actions/                WS2  six-action simulator and financial accounting
+├── optimization/           WS2  NSGA-II, Pareto, constraints, recommendation, CLI
+├── risk/                   WS3  Monte Carlo risk
+├── benchmarking/           WS3  offline peer benchmark
+├── dashboard/              WS4  panels, charts, state, chat UI
+└── llm/                    WS4  chatbot client, tools, mock model
+ml_core/                    WS1  multi-target forecasting pipeline (standalone)
+synthetic_data_generation/  WS1  synthetic company data generator
+config/                     Action assumptions, uncertainty and benchmark settings
+data/                       Offline peer benchmark snapshot
+tests/                      Contract, unit and integration tests, plus mocks and fixtures
+carbonopt-ai-docs/          Specifications and handoffs
+docs/                       Workstream handoffs and chatbot notes
 ```
 
-Run this each time you open a new terminal to work on the project.
+### Workstream status
 
-### 4. Verify the installation
+| Workstream | Scope | Status |
+|---|---|---|
+| **WS1** Data and ML | Forecasting, backtests, SHAP | Pipeline in `ml_core/` runs on its own. **Not yet published as a provider**, so the dashboard uses a labelled fixture baseline. |
+| **WS2** Actions and optimisation | Simulator, NSGA-II, recommendation | ✅ Integrated |
+| **WS3** Risk and benchmark | Monte Carlo, peer comparison | ✅ Integrated |
+| **WS4** Dashboard and chat | Streamlit UI, provider registry, assistant | ✅ Integrated |
 
-```bash
-python -c "import numpy, pandas, sklearn, matplotlib; print('Environment ready')"
-```
+---
 
-### 5. (Optional) Register the Jupyter kernel
+## 📚 Documentation
 
-To select the environment as a kernel in Jupyter or VS Code:
+| Document | Purpose |
+|---|---|
+| [carbonopt-ai-docs/](carbonopt-ai-docs/README.md) | Full specification set: contracts, schemas, action model, forecasting, risk and benchmark |
+| [Implementation plan](carbonopt-ai-docs/IMPLEMENTATION_PLAN.md) | Scope, priorities, ownership, milestones |
+| [Integration guide](carbonopt-ai-docs/docs/INTEGRATION_GUIDE.md) | Provider wiring and checkpoints |
+| [WS2 handoff](docs/handoffs/WS2_HANDOFF.md) | Action engine and optimiser details |
+| [WS4 handoff](docs/handoffs/WS4_DASHBOARD_HANDOFF.md) | Dashboard and provider registry |
+| [WS3 delivery](carbonopt-ai-docs/docs/handoffs/ws3/WS3_DELIVERY.md) | Risk and benchmark delivery notes |
+| [Chatbot plan](docs/CHATBOT_IMPLEMENTATION.md) | Assistant architecture |
 
-```bash
-python -m ipykernel install --user --name adahack --display-name "Python (adahack)"
-```
+---
 
-Launch JupyterLab with:
-
-```bash
-jupyter lab
-```
-
-## Managing the Environment
+## 🧰 Environment management
 
 | Task | Command |
-|------|---------|
+|---|---|
 | Update after `environment.yml` changes | `conda env update -f environment.yml` |
-| Deactivate the environment | `conda deactivate` |
-| List installed packages | `conda list` |
+| Reinstall pinned app and test dependencies | `python -m pip install -r requirements.txt` |
+| Register a Jupyter kernel | `python -m ipykernel install --user --name adahack --display-name "Python (adahack)"` |
+| Deactivate | `conda deactivate` |
 | Remove the environment | `conda env remove -n adahack` |
 
-### Adding a new dependency
+To add a dependency, put it under `dependencies:` in `environment.yml` (or under `- pip:` if it is pip-only). If the app or tests need it, also pin it in `requirements.txt`, which CI installs. Then update the env and commit both files.
 
-1. Add the package under `dependencies:` in `environment.yml`. If it's only on pip, add it under a `- pip:` subsection instead.
-2. Update your environment:
+## 🩺 Troubleshooting
 
-   ```bash
-   conda env update -f environment.yml
-   ```
-
-3. Commit the updated `environment.yml` so the rest of the team picks it up.
-
-## Included Libraries
-
-| Category | Packages |
-|----------|----------|
-| Core data | numpy, pandas, scipy |
-| Visualisation | matplotlib, seaborn, plotly |
-| Machine learning & statistics | scikit-learn, statsmodels |
-| Notebooks | jupyterlab, ipykernel |
-| Utilities | requests, python-dotenv, tqdm |
-
-
-deneme1
+| Symptom | Fix |
+|---|---|
+| `Provider configuration error` banner | You are in `real` mode. Switch to `hybrid`. |
+| `ModuleNotFoundError` for streamlit, pymoo or pytest | Activate `adahack`, then run `python -m pip install -r requirements.txt`. |
+| `ModuleNotFoundError: src` | Run commands from the repository root. |
+| Chat shows an error with `ollama` | `OLLAMA_BASE_URL` is unset or unreachable. Use `CHATBOT_PROVIDER=mock` to work offline. |
+| Port 8501 is busy | Add `--server.port 8599`. |
