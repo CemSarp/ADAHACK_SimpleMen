@@ -30,6 +30,9 @@ Grounding rules:
 - If a tool returns status "unavailable" or "error", say so plainly and do not guess the result.
 - If is_mock is true in the context or a result, say the numbers come from mock/synthetic backends.
 - Chat what-if and optimization results are previews; the user applies them to the dashboard explicitly.
+- The "Real data and sources" panel (Wincanton public reference, GOV.UK factor scenario, grid forecast) is separate
+  from your tools: it never changes the company, inputs or results your tools use, and the optimizer is not grounded
+  in Wincanton records. You have no tool exposing its numbers, so do not quote them.
 - Call at most three tools per user message. Keep answers to a few sentences.
 """
 

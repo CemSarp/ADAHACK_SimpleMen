@@ -1,0 +1,24 @@
+{
+  "source_id": "wincanton-annual-review-2024",
+  "company": "Wincanton plc",
+  "title": "Wincanton Annual Review 2024",
+  "source_url": "https://win-12731-s3.s3.eu-west-2.amazonaws.com/assets/7317/2796/5575/Wincanton_Annual_Review_2024.pdf",
+  "retrieved_at": "2026-10-03",
+  "period_start": "2023-04-01",
+  "period_end": "2024-03-31",
+  "data_kind": "reported_historical",
+  "boundary_note": "Report categories and organisational boundary as published (operations in the UK and Ireland). Annual totals only; not monthly records. Scope 1 non-transport energy is not a verified natural-gas-only quantity.",
+  "values": {
+    "revenue": {"label": "Revenue", "value": 1406.6, "unit": "£m", "scope": null, "page": "printed pp. 1, 5"},
+    "energy_transport_scope1": {"label": "Transport energy", "value": 1025192, "unit": "MWh", "scope": "Scope 1", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "energy_non_transport_scope1": {"label": "Non-transport energy", "value": 38100, "unit": "MWh", "scope": "Scope 1", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "electricity_transport": {"label": "Electricity, transport", "value": 662, "unit": "MWh", "scope": "Scope 2", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "electricity_non_transport": {"label": "Electricity, non-transport", "value": 77485, "unit": "MWh", "scope": "Scope 2", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "emissions_transport_scope1": {"label": "Transport emissions", "value": 234907, "unit": "tCO2e", "scope": "Scope 1", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "emissions_non_transport_scope1": {"label": "Non-transport emissions", "value": 7948, "unit": "tCO2e", "scope": "Scope 1", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "emissions_electricity_transport": {"label": "Electricity emissions, transport", "value": 149, "unit": "tCO2e", "scope": "Scope 2", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "emissions_electricity_non_transport": {"label": "Electricity emissions, non-transport", "value": 17433, "unit": "tCO2e", "scope": "Scope 2", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "emissions_scope1_and_2_total": {"label": "Total Scope 1 and 2", "value": 260437, "unit": "tCO2e", "scope": "Scope 1 and 2", "page": "printed pp. 24-25 (PDF page index 13)"},
+    "emissions_scope3": {"label": "Scope 3", "value": 67039, "unit": "tCO2e", "scope": "Scope 3", "page": "printed pp. 24-25 (PDF page index 13)"}
+  }
+}

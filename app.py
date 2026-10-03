@@ -21,6 +21,7 @@ from src.contracts.errors import ProviderConfigurationError
 from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig
 from src.dashboard import components
 from src.dashboard.chat_ui import render_chat
+from src.dashboard.grounding_panel import render_grounding_panel
 from src.dashboard.state import DashboardState
 from src.integration.services import (
     DEFAULT_HYBRID_PRESET,
@@ -184,6 +185,7 @@ def main() -> None:
             state.run_optimize(request, services)
 
     dark = _is_dark()
+    render_grounding_panel()
     components.company_context(state, dark)
     if state.baseline is not None:
         components.backtest_panel(state, dark)
