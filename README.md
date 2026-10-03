@@ -110,4 +110,3 @@ jupyter lab
 | Utilities | requests, python-dotenv, tqdm |
 
 
-deneme1
