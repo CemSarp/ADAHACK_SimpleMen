@@ -1,3 +1,9 @@
+"""Shared pytest fixtures: WS4 provider/request fixtures and WS2 contract-object fixtures.
+
+Both sets load from the same fixture kit (tests/fixtures/v1) through the shared
+contract serializers and validators, so every test sees one schema definition.
+"""
+
 from __future__ import annotations
 
 import pytest
@@ -34,3 +40,26 @@ def request_infeasible(request_ok) -> AnalysisRequest:
 
     return replace(request_ok, constraints=ConstraintConfig(budget_gbp=0.0, min_total_profit_gbp=1_000_000.0,
                                                               min_co2_reduction_ratio=0.2))
+
+
+# ---- WS2 domain fixtures (fresh, validated objects per test) ----------------
+
+
+@pytest.fixture
+def baseline():
+    return fixtures.baseline()
+
+
+@pytest.fixture
+def assumptions():
+    return fixtures.assumptions()
+
+
+@pytest.fixture
+def example_config():
+    return fixtures.action_config()
+
+
+@pytest.fixture
+def example_constraints():
+    return fixtures.constraints()

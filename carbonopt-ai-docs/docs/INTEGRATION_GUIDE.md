@@ -139,6 +139,23 @@ python -m src.forecasting.backtest --config config/default.json
 
 The exact CLI implementation must agree with these commands or update the guide in the same PR. These module names do not imply code exists in this documentation package.
 
+### Current integration state (WS1 not yet available)
+
+The repository runs WS4's dashboard with the real WS2 providers through the hybrid preset `fixture-forecast-real-ws2`:
+
+```sh
+CARBONOPT_PROVIDER_MODE=hybrid python -m streamlit run app.py
+```
+
+| Slot | Bound to |
+|---|---|
+| forecast | labelled fixture baseline (mock) |
+| simulator, optimizer | real WS2 |
+| risk, benchmark | unavailable until WS3 publishes factories |
+| SHAP | disabled (a fixture baseline has no model to explain) |
+
+The banner reads **PARTIALLY MOCKED** and the provenance line names each provider. This is not C4. The WS1 replacement point is `src.forecasting.provider.create_forecast_provider()`; once it exists, `CARBONOPT_PROVIDER_MODE=real` binds it without consumer changes. Until then real mode stops with an error naming the missing forecast provider.
+
 ## 8. Integration acceptance and rollback
 
 Run the same AnalysisRequest with fixtures and then real providers; verify shape, dates, units, ID joins, no-op and accounting invariants rather than expecting real model predictions to equal fixture values.

@@ -22,7 +22,8 @@ def strategy_identity_payload(
 ) -> str:
     identity = {
         "baseline_id": baseline_id,
-        "config": {name: float(getattr(config, name)) for name in ACTION_NAMES},
+        # "+ 0.0" maps -0.0 to 0.0 so numerically equal configs share one identity.
+        "config": {name: float(getattr(config, name)) + 0.0 for name in ACTION_NAMES},
         "assumptions_id": assumptions_id,
         "assumptions_version": assumptions_version,
     }

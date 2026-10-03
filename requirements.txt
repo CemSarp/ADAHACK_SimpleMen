@@ -7,3 +7,6 @@ pandas==3.0.6
 plotly==7.1.0
 streamlit==1.65.0
 pytest==9.1.1
+# WS2 NSGA-II. 0.6.2+ seeds a local Generator and never touches the global NumPy RNG.
+# Imported lazily: mock-mode startup does not need it; the real optimizer provider does.
+pymoo==0.6.2

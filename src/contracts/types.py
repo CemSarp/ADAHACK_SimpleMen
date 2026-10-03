@@ -327,11 +327,20 @@ class SimulationResult:
 
 @dataclass(frozen=True)
 class ConstraintEvaluation:
+    """Normalized constraints (feasible when g <= 1e-8) plus raw-boundary checks.
+
+    `satisfied` is an additive optional field (contract 1.x): per-constraint pass/fail
+    keyed `budget`, `profit`, `target`, combining the normalized and raw tests exactly
+    as `feasible` does, so UI badges never re-derive feasibility. Empty when a
+    provider does not supply it.
+    """
+
     g_budget: float
     g_profit: float
     g_target: float
     feasible: bool
     raw_violations: Mapping[str, float]
+    satisfied: Mapping[str, bool] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, eq=False)
@@ -350,6 +359,9 @@ class OptimizationResult:
 
 @dataclass(frozen=True)
 class RecommendationResult:
+    """`diagnostics` is an additive optional field (contract 1.x) carrying the
+    selection pool, risk coverage, thresholds and shortfalls behind the choice."""
+
     schema_version: str
     run_id: str
     provenance: Provenance
@@ -359,6 +371,7 @@ class RecommendationResult:
     score: float | None
     risk_status: str
     reason: str | None
+    diagnostics: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, eq=False)

@@ -54,15 +54,15 @@ def load_baseline(request: AnalysisRequest, *, services: Services) -> tuple[Base
 
 
 def select_risk_pool(pareto: pd.DataFrame, max_size: int = RISK_POOL_MAX) -> list[str]:
-    """Bounded risk selection pool (RISK_AND_BENCHMARK_SPEC.md section 2):
-    all points if <= max_size, else both emission endpoints plus evenly spaced
-    points by emissions order. Awaiting WS2/WS3 review as the shared rule."""
-    ordered = pareto.sort_values(["total_co2e_tco2e", "strategy_id"])["strategy_id"].tolist()
-    if len(ordered) <= max_size:
-        return ordered
-    step = (len(ordered) - 1) / (max_size - 1)
-    picks = sorted({round(i * step) for i in range(max_size)})
-    return [ordered[i] for i in picks]
+    """Bounded risk selection pool (RISK_AND_BENCHMARK_SPEC.md section 2).
+
+    Delegates to WS2's single rule (both emission endpoints plus evenly spaced points by
+    emissions order, at most ``max_size``), so the strategies sent to Monte Carlo are
+    exactly the ones the recommendation policy ranks. Pure and pymoo-free.
+    """
+    from src.optimization.recommendation import risk_pool_from_frontier
+
+    return list(risk_pool_from_frontier(pareto, max_size=max_size))
 
 
 def _evaluate_risk(

@@ -55,11 +55,12 @@ def fake_ws2(monkeypatch, tmp_path):
     return modules
 
 
-def test_real_mode_without_ws_modules_names_every_missing_p0_provider():
+def test_real_mode_names_the_missing_ws1_forecast_provider():
+    # WS2 publishes its simulator/optimizer; WS1's forecast factory does not exist yet.
     with pytest.raises(ProviderConfigurationError) as exc:
         create_services(mode="real")
-    assert set(exc.value.missing) == {"forecast", "simulator", "optimizer"}
-    assert "not implemented yet" in str(exc.value)
+    assert set(exc.value.missing) == {"forecast"}
+    assert "src.forecasting.provider is not implemented yet" in str(exc.value)
 
 
 def test_mode_and_override_validation():
@@ -137,8 +138,9 @@ def test_missing_assumptions_file_is_a_configuration_error(fake_ws2, monkeypatch
 
 
 def test_failed_real_p0_provider_never_falls_back_to_mock():
-    with pytest.raises(ProviderConfigurationError, match="simulator"):
-        create_services(mode="hybrid", provider_overrides={"simulator": "real"})
+    # The WS1 forecast is the P0 slot without a real provider: asking for it must fail, not mock.
+    with pytest.raises(ProviderConfigurationError, match="forecast"):
+        create_services(mode="hybrid", provider_overrides={"forecast": "real", "simulator": "real", "optimizer": "real"})
 
 
 def test_optional_real_provider_with_missing_dependency_is_disabled(monkeypatch):
