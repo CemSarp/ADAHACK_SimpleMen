@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import pandas as pd
+
 from src.contracts.identity import canonical_hash
 from src.contracts.types import AnalysisBundle, AnalysisRequest, BaselineBundle, SimulationResult
 from src.integration import cache_keys
@@ -23,6 +25,7 @@ class AnalysisContext:
     baseline: BaselineBundle
     analysis: AnalysisBundle | None
     selected: SimulationResult | None
+    history: pd.DataFrame | None = None  # company history behind the baseline; read-only
 
     @property
     def version(self) -> str:
@@ -70,7 +73,11 @@ class AnalysisContext:
             out["uncertainty_id"] = getattr(s.risk, "uncertainty_id", None)
         if self.analysis is not None:
             out["recommended_strategy_id"] = self.analysis.recommendation.strategy_id
-        if self.selected is not None:
+        if self.selected is None:
+            out["selected_strategy"] = None
+            out["selected_strategy_note"] = ("No strategy is selected yet. The user creates one by pressing Optimize "
+                                             "in the sidebar and choosing a plan.")
+        else:
             m = self.selected.metrics
             out["selected_strategy"] = {
                 "strategy_id": self.selected.strategy_id,

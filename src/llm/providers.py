@@ -1,4 +1,4 @@
-"""Model providers: remote Ollama (native /api/chat) and a deterministic mock.
+"""Model providers: Ollama (native /api/chat), LM Studio (OpenAI-compatible /v1) and a deterministic mock.
 
 Transport details stay in this module. Nothing here touches the network at
 import time or constructs a connection until `chat()` / `check_connection()` is
@@ -99,16 +99,38 @@ def _message_to_wire(m: ChatMessage) -> dict[str, Any]:
     return wire
 
 
+def _parse_tool_calls(raw_calls: Any) -> list[ToolCall]:
+    """Shared validation of model tool calls; arguments may arrive as an object or a JSON string."""
+    calls = []
+    for i, raw in enumerate(raw_calls or []):
+        fn = raw.get("function") if isinstance(raw, dict) else None
+        if not isinstance(fn, dict) or not isinstance(fn.get("name"), str) or not fn["name"]:
+            raise ChatInvalidResponse(f"tool_calls[{i}] has no function name")
+        args = fn.get("arguments", {})
+        if isinstance(args, str):
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except ValueError as exc:
+                raise ChatInvalidResponse(f"tool_calls[{i}] arguments are not valid JSON") from exc
+        if not isinstance(args, dict):
+            raise ChatInvalidResponse(f"tool_calls[{i}] arguments must be an object")
+        call_id = raw.get("id")
+        calls.append(ToolCall(name=fn["name"], arguments=args, id=call_id if isinstance(call_id, str) else None))
+    return calls
+
+
 class OllamaChatProvider:
+    PROVIDER = "ollama"
+
     def __init__(self, config: ChatbotConfig, *, transport: Transport = urllib_transport) -> None:
-        if config.provider != "ollama":
-            raise ChatConfigurationError("OllamaChatProvider needs CHATBOT_PROVIDER=ollama")
+        if config.provider != self.PROVIDER:
+            raise ChatConfigurationError(f"{type(self).__name__} needs CHATBOT_PROVIDER={self.PROVIDER}")
         config.validate()
         self._config = config
         self._transport = transport
         self._base = (config.base_url or "").rstrip("/")
-        self.info = ProviderInfo(slot="chat", name=f"ollama:{config.model}", version=config.model, is_mock=False,
-                                 kind="real")
+        self.info = ProviderInfo(slot="chat", name=f"{self.PROVIDER}:{config.model}", version=config.model,
+                                 is_mock=False, kind="real")
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -122,7 +144,8 @@ class OllamaChatProvider:
         if status >= 400:
             detail = text
             try:
-                detail = str(json.loads(text).get("error", text))
+                err = json.loads(text).get("error", text)
+                detail = str(err.get("message", err) if isinstance(err, dict) else err)
             except (ValueError, AttributeError):
                 pass
             raise ChatServerError(status, detail[:300] or "no detail")
@@ -149,20 +172,7 @@ class OllamaChatProvider:
         content = message.get("content") or ""
         if not isinstance(content, str):
             raise ChatInvalidResponse("message.content must be a string")
-        calls = []
-        for i, raw in enumerate(message.get("tool_calls") or []):
-            fn = raw.get("function") if isinstance(raw, dict) else None
-            if not isinstance(fn, dict) or not isinstance(fn.get("name"), str) or not fn["name"]:
-                raise ChatInvalidResponse(f"tool_calls[{i}] has no function name")
-            args = fn.get("arguments", {})
-            if isinstance(args, str):
-                try:
-                    args = json.loads(args) if args.strip() else {}
-                except ValueError as exc:
-                    raise ChatInvalidResponse(f"tool_calls[{i}] arguments are not valid JSON") from exc
-            if not isinstance(args, dict):
-                raise ChatInvalidResponse(f"tool_calls[{i}] arguments must be an object")
-            calls.append(ToolCall(name=fn["name"], arguments=args))
+        calls = _parse_tool_calls(message.get("tool_calls"))
         if not content.strip() and not calls:
             raise ChatInvalidResponse("model returned neither text nor a tool call")
         return ModelResponse(text=content, tool_calls=tuple(calls))
@@ -179,13 +189,87 @@ class OllamaChatProvider:
 
 
 # --------------------------------------------------------------------------- #
+# LM Studio (OpenAI-compatible chat completions)
+# --------------------------------------------------------------------------- #
+
+_THINKING = re.compile(r"<think>.*?</think>", re.DOTALL)
+OUT_OF_BUDGET = ("I ran out of room while working this out, so I have no answer yet. Please ask a narrower question, "
+                 "for example one topic at a time, or raise LMSTUDIO_MAX_OUTPUT_TOKENS.")
+
+
+def _message_to_openai(m: ChatMessage, index: int) -> dict[str, Any]:
+    wire: dict[str, Any] = {"role": m.role, "content": m.content}
+    if m.role == "tool":
+        wire["tool_call_id"] = m.tool_call_id
+    if m.tool_calls:
+        wire["tool_calls"] = [{"id": c.id or f"call_{index}_{i}", "type": "function",
+                               "function": {"name": c.name, "arguments": json.dumps(dict(c.arguments))}}
+                              for i, c in enumerate(m.tool_calls)]
+    return wire
+
+
+class LMStudioChatProvider(OllamaChatProvider):
+    """LM Studio's local server. Same validation and errors as Ollama; OpenAI wire format."""
+
+    PROVIDER = "lmstudio"
+
+    def chat(self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec]) -> ModelResponse:
+        wire = [_message_to_openai(m, i) for i, m in enumerate(messages)]
+        # Every tool result must echo the id of the call it answers; pair id-less results in call order.
+        pending: list[str] = []
+        for i, w in enumerate(wire):
+            if w.get("tool_calls"):
+                pending = [c["id"] for c in w["tool_calls"]]
+            elif w["role"] == "tool":
+                if w["tool_call_id"] in pending:
+                    pending.remove(w["tool_call_id"])
+                else:
+                    w["tool_call_id"] = pending.pop(0) if pending else f"call_{i}"
+        body = {
+            "model": self._config.model,
+            "messages": wire,
+            "tools": [_tool_to_wire(t) for t in tools],
+            "tool_choice": "auto",
+            "temperature": 0,
+            "max_tokens": self._config.max_output_tokens,
+            "stream": False,
+        }
+        data = self._request("POST", "/chat/completions", body)
+        choices = data.get("choices")
+        message = choices[0].get("message") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
+        if not isinstance(message, dict):
+            raise ChatInvalidResponse("response has no choices[0].message object")
+        content = message.get("content") or ""
+        if not isinstance(content, str):
+            raise ChatInvalidResponse("message.content must be a string")
+        content = _THINKING.sub("", content).strip()  # some local models inline their reasoning
+        calls = _parse_tool_calls(message.get("tool_calls"))
+        calls = [c if c.id else ToolCall(c.name, c.arguments, id=f"call_{i}") for i, c in enumerate(calls)]
+        if not content and not calls and choices[0].get("finish_reason") == "length":
+            return ModelResponse(text=OUT_OF_BUDGET)  # spent the whole budget thinking; say so instead of failing
+        if not content and not calls:
+            raise ChatInvalidResponse("model returned neither text nor a tool call")
+        return ModelResponse(text=content, tool_calls=tuple(calls))
+
+    def check_connection(self) -> ConnectionStatus:
+        """Explicit user action: list loaded/downloaded models and confirm the configured one exists."""
+        data = self._request("GET", "/models", None)
+        names = tuple(str(m.get("id")) for m in data.get("data", []) if isinstance(m, dict))
+        wanted = self._config.model
+        if wanted in names:
+            return ConnectionStatus(True, f"Connected; model {wanted} is available.", names)
+        return ConnectionStatus(False, f"Connected, but model {wanted} is not listed by LM Studio.", names)
+
+
+# --------------------------------------------------------------------------- #
 # Mock
 # --------------------------------------------------------------------------- #
 
 _HELP = (
-    "I can help with: explaining the selected strategy, showing the baseline forecast, previewing a what-if "
-    "(for example 'EV share becomes 80%'), finding a plan within a budget (for example 'within a £500k budget'), "
-    "and showing risk for the selected strategy. Tell me which one you want."
+    "I can help with: where your emissions come from, comparing the six actions, explaining the selected "
+    "strategy, showing the baseline forecast, previewing a what-if (for example 'EV share becomes 80%'), finding a "
+    "plan within a budget (for example 'within a £500k budget'), risk for the selected strategy, and the Wincanton "
+    "real-data reference. Tell me which one you want."
 )
 _NUM = r"(\d+(?:\.\d+)?)"
 
@@ -239,6 +323,12 @@ class MockChatProvider:
             return ModelResponse(text="", tool_calls=(ToolCall("get_risk_summary", {}),))
         if re.search(r"\b(explain|describe)\b", t) and re.search(r"\b(selected|strategy|plan)\b", t):
             return ModelResponse(text="", tool_calls=(ToolCall("simulate_strategy", {"start_from": "selected_strategy"}),))
+        if re.search(r"\b(wincanton|real data|scopes?)\b", t):
+            return ModelResponse(text="", tool_calls=(ToolCall("get_public_reference", {}),))
+        if re.search(r"\b(which action|actions|levers?|most effective|cheapest)\b", t):
+            return ModelResponse(text="", tool_calls=(ToolCall("compare_actions", {}),))
+        if re.search(r"(come from|\bcompany\b|\bprofile\b|\btrend|\bhistory\b|last 12 months)", t):
+            return ModelResponse(text="", tool_calls=(ToolCall("get_company_profile", {}),))
         if re.search(r"\b(baseline|forecast)\b", t):
             return ModelResponse(text="", tool_calls=(ToolCall("get_baseline", {}),))
         return ModelResponse(text=_HELP)
@@ -248,4 +338,6 @@ def create_chat_provider(config: ChatbotConfig, *, transport: Transport = urllib
     config.validate()
     if config.provider == "mock":
         return MockChatProvider()
+    if config.provider == "lmstudio":
+        return LMStudioChatProvider(config, transport=transport)
     return OllamaChatProvider(config, transport=transport)

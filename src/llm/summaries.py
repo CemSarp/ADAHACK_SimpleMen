@@ -63,4 +63,38 @@ def summarize_payload(payload: Mapping[str, Any]) -> str:
         return (f"Over {data['n_simulations']:,} trials{mock} the target is met with probability "
                 f"{pct(s['target_probability'])} and all constraints with {pct(s['joint_feasibility_probability'])} "
                 f"(finite-trial estimates, not guarantees).")
+    if kind == "company_profile":
+        hist = data.get("history")
+        f = data["baseline_forecast"]["emissions"]
+        text = (f"Baseline forecast ({data['baseline_forecast']['period']}): {tonnes(f['total_tco2e'])}, of which "
+                f"Scope 1 {f['share_pct']['scope1']}%, Scope 2 {f['share_pct']['scope2']}%, "
+                f"Scope 3 {f['share_pct']['scope3']}%.")
+        if hist:
+            w = hist["last_12_months"]
+            text += (f" Last 12 months ({w['period']}): {tonnes(w['emissions']['total_tco2e'])}, operating profit "
+                     f"{gbp(w['operating_profit_gbp'])}.")
+        return text + f" {data['data_note']}"
+    if kind == "action_comparison":
+        rows = {r["action"]: r for r in data["actions"]}
+        if not data["ranked_by_co2_cut"]:
+            return "None of the actions changes emissions for this company under the current assumptions."
+        top = rows[data["ranked_by_co2_cut"][0]]
+        m = top["alone_at_full_adoption_over_horizon"]
+        text = (f"On its own, {top['label'].lower()} cuts the most: {tonnes(m['co2_cut_tco2e'])} "
+                f"({m['co2_cut_pct_of_total_baseline']}% of total baseline emissions) for a gross outlay of {gbp(m['gross_outlay_gbp'])}"
+                f"{mock}.")
+        if data["no_effect_for_this_company"]:
+            text += " No effect for this company: " + ", ".join(
+                rows[a]["label"].lower() for a in data["no_effect_for_this_company"]) + "."
+        return text + " Action costs are illustrative assumptions."
+    if kind == "public_reference":
+        d = data["derived_from_figures"]
+        text = (f"{data['company']} ({data['period']}, a separate real company): transport fuel is "
+                f"{d['transport_fuel_share_of_scope1_2_pct']}% and electricity {d['electricity_share_of_scope1_2_pct']}% "
+                "of its reported Scope 1 and 2 emissions.")
+        sc = data.get("electricity_scenario")
+        if sc:
+            text += (f" Cutting its electricity use by {sc['reduction_pct']}% would save about "
+                     f"{tonnes(sc['co2e_saved_tco2e_per_year'])} a year ({sc['label']}).")
+        return text
     return "The tool returned a result."

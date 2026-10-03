@@ -24,10 +24,12 @@ from src.contracts.types import (
 )
 from src.integration.services import Services
 
+from . import insights
 from .context import AnalysisContext
 from .types import ToolSpec
 
-ALLOWED_TOOLS = ("get_baseline", "simulate_strategy", "optimize_strategies", "get_risk_summary")
+ALLOWED_TOOLS = ("get_baseline", "simulate_strategy", "optimize_strategies", "get_risk_summary",
+                 "get_company_profile", "compare_actions", "get_public_reference")
 MAX_TOOL_EXECUTIONS_PER_MESSAGE = 3
 CHAT_MAX_EVALUATIONS = 512
 CHAT_MAX_RISK_TRIALS = 1000
@@ -78,6 +80,31 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         "Defaults to the selected strategy. Reports unavailable when risk is not available.",
         {"type": "object", "additionalProperties": False, "properties": {"strategy_id": {"type": "string"}}},
     ),
+    ToolSpec(
+        "get_company_profile",
+        "Facts about the dashboard company from its own data: last 12 months vs the previous 12 (emissions by scope "
+        "with shares, revenue, operating profit, margin, emissions per £m revenue, activity), current renewable and EV "
+        "shares, what each scope contains, which activities are not reported, and the baseline forecast vs history. "
+        "Use for questions about the company, its emissions, trends or where emissions come from.",
+        {"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    ToolSpec(
+        "compare_actions",
+        "Explain the six actions and run each one alone at full adoption through the simulator: CO2 cut, operating "
+        "profit change, gross outlay and outlay per tonne, ranked, plus which actions have no effect for this company. "
+        "Use for 'what can we do', 'what does action X do', 'which action cuts the most / is cheapest per tonne'.",
+        {"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    ToolSpec(
+        "get_public_reference",
+        "Wincanton plc FY2024 public disclosure: a real UK logistics company used as a SEPARATE reference, not the "
+        "dashboard company. Reported energy, emissions by scope and revenue, derived shares, a plain explanation of "
+        "Scope 1/2/3, and optionally an electricity-reduction scenario with the GOV.UK 2026 factor "
+        "(electricity_reduction_ratio is a 0-1 ratio, 10% = 0.1). Use for Wincanton, real-world data, scopes, or the "
+        "'Real data and sources' panel.",
+        {"type": "object", "additionalProperties": False, "properties": {
+            "electricity_reduction_ratio": {"type": "number", "minimum": 0, "maximum": 1}}},
+    ),
 )
 
 
@@ -123,6 +150,9 @@ def validate_arguments(name: str, arguments: Any) -> dict[str, Any]:
         "simulate_strategy": ("actions", "final_shares", "start_from"),
         "optimize_strategies": ("budget_gbp", "min_total_profit_gbp", "min_co2_reduction_ratio"),
         "get_risk_summary": ("strategy_id",),
+        "get_company_profile": (),
+        "compare_actions": (),
+        "get_public_reference": ("electricity_reduction_ratio",),
     }[name])
     out: dict[str, Any] = {}
     if name == "simulate_strategy":
@@ -145,6 +175,10 @@ def validate_arguments(name: str, arguments: Any) -> dict[str, Any]:
             out["min_total_profit_gbp"] = _number("min_total_profit_gbp", args["min_total_profit_gbp"])
         if "min_co2_reduction_ratio" in args:
             out["min_co2_reduction_ratio"] = _number("min_co2_reduction_ratio", args["min_co2_reduction_ratio"], 0.0, 1.0)
+    elif name == "get_public_reference":
+        if "electricity_reduction_ratio" in args:
+            out["electricity_reduction_ratio"] = _number("electricity_reduction_ratio",
+                                                         args["electricity_reduction_ratio"], 0.0, 1.0)
     elif name == "get_risk_summary":
         sid = args.get("strategy_id")
         if sid is not None:
@@ -200,11 +234,12 @@ def _tool_simulate(args: dict[str, Any], ctx: AnalysisContext, services: Service
     baseline = ctx.baseline
     notes: list[str] = []
     start = args["start_from"]
+    no_selection = start == "selected_strategy" and ctx.selected is None
     if start == "selected_strategy" and ctx.selected is not None:
         values = ctx.selected.config.as_dict()
     else:
         values = ActionConfig.noop().as_dict()
-        if start == "selected_strategy":
+        if no_selection:
             notes.append("No strategy is selected, so the preview starts from no action.")
     values.update(args["actions"])
     conversions = []
@@ -239,6 +274,10 @@ def _tool_simulate(args: dict[str, Any], ctx: AnalysisContext, services: Service
         "kind": "simulation", "strategy_id": result.strategy_id, "config": config.as_dict(), "start_from": start,
         "conversions": conversions, "resulting_shares": shares, "metrics": _metrics(result), "feasibility": feasibility,
         "matches_selected_strategy": ctx.selected is not None and ctx.selected.strategy_id == result.strategy_id,
+        "no_strategy_selected": no_selection,
+        **({"what_this_shows": "No plan is selected, so there is no current approach to explain. These numbers are "
+                               "only the requested changes applied to the business-as-usual baseline."}
+           if no_selection else {}),
         "notes": notes, "is_mock": result.provenance.is_mock,
     }
 
@@ -293,11 +332,22 @@ def _tool_risk(args: dict[str, Any], ctx: AnalysisContext, services: Services) -
             "summary": dict(risk.summary), "is_mock": risk.provenance.is_mock}
 
 
+def _tool_public_reference(args: dict[str, Any], ctx: AnalysisContext, services: Services) -> dict[str, Any]:
+    try:
+        return insights.public_reference(args.get("electricity_reduction_ratio"))
+    except (OSError, ValueError) as exc:  # missing or invalid snapshot file
+        raise CapabilityUnavailable(f"public reference data unavailable: {exc}") from exc
+
+
 _HANDLERS = {
     "get_baseline": _tool_get_baseline,
     "simulate_strategy": _tool_simulate,
     "optimize_strategies": _tool_optimize,
     "get_risk_summary": _tool_risk,
+    "get_company_profile": lambda args, ctx, services: insights.company_profile(ctx.history, ctx.baseline,
+                                                                                services.assumptions),
+    "compare_actions": lambda args, ctx, services: insights.compare_actions(ctx.baseline, services),
+    "get_public_reference": _tool_public_reference,
 }
 
 

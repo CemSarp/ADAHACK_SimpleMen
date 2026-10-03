@@ -37,7 +37,8 @@ def run(ctx, name, args):
 
 
 def test_allowlist_matches_documented_tools():
-    assert ALLOWED_TOOLS == ("get_baseline", "simulate_strategy", "optimize_strategies", "get_risk_summary")
+    assert ALLOWED_TOOLS == ("get_baseline", "simulate_strategy", "optimize_strategies", "get_risk_summary",
+                             "get_company_profile", "compare_actions", "get_public_reference")
     assert [s.name for s in TOOL_SPECS] == list(ALLOWED_TOOLS)
 
 

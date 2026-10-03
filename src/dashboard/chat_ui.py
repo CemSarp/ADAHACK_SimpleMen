@@ -24,24 +24,49 @@ from src.llm.summaries import gbp, pct, tonnes
 
 from .chat_state import SUGGESTIONS, ChatState
 from .state import DashboardState
-from .theme import GRID, PANEL, INK
+from .theme import BG, GREEN, INK, MUTED
 
 logger = logging.getLogger(__name__)
 
 LAUNCHER_KEY = "cc_launcher"
 PANEL_KEY = "cc_panel"
+SIZE_KEY = "cc_size"
+# Panel width (px, capped to the viewport) and conversation height (px) per size preset.
+SIZES = {"compact": (380, 300), "large": (620, 460), "full": (1000, 600)}
+SIZE_ICONS = {"compact": ":material/close_fullscreen:", "large": ":material/open_in_full:",
+              "full": ":material/fullscreen:"}
 
 
-def _css(dark: bool) -> str:
-    bg, fg, border = (PANEL, INK, GRID) if dark else ("#fcfcfb", "#0b0b0b", "#c3c2b7")
+def _css(dark: bool, size: str) -> str:
+    # surface, text, muted text, edge, accent, raised fill (chips/user bubbles), input field
+    bg, fg, muted, border, accent, raised, field = (
+        ("#151e27", INK, MUTED, "#2f4a3c", GREEN, "#1e2b36", BG) if dark else
+        ("#ffffff", "#0b0b0b", "#5b6168", "#b9c4bd", "#1a7f45", "#eef4f0", "#f7f9f8"))
+    width = SIZES[size][0]
     return f"""<style>
 .st-key-{LAUNCHER_KEY} {{ position: fixed; left: 16px; bottom: 16px; z-index: 1000100; width: auto; }}
 .st-key-{LAUNCHER_KEY} button {{ width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
   box-shadow: 0 2px 10px rgba(0,0,0,.3); font-size: 1.5rem; }}
-.st-key-{PANEL_KEY} {{ position: fixed; left: 16px; bottom: 84px; z-index: 1000100; width: min(380px, calc(100vw - 32px));
-  max-height: calc(100vh - 108px); overflow-y: auto; padding: 12px; border-radius: 12px; background: {bg}; color: {fg};
-  border: 1px solid {border}; box-shadow: 0 6px 24px rgba(0,0,0,.28); }}
+.st-key-{PANEL_KEY} {{ position: fixed; left: 16px; bottom: 84px; z-index: 1000100; width: min({width}px, calc(100vw - 32px));
+  max-height: calc(100vh - 108px); overflow-y: auto; padding: 12px 14px; border-radius: 14px; background: {bg}; color: {fg};
+  border: 1px solid {border}; box-shadow: 0 10px 36px rgba(0,0,0,.45); }}
+.st-key-{PANEL_KEY} [data-testid="stCaptionContainer"] {{ color: {muted}; }}
+/* Header and status separated from the conversation by one divider line. */
+.st-key-cc_head {{ border-bottom: 1px solid {border}; padding-bottom: 8px; margin-bottom: 2px; }}
+/* The message box: accent outline on a darker field so it is easy to find. */
+.st-key-{PANEL_KEY} [data-testid="stChatInput"] {{ border: 1.5px solid {accent}; border-radius: 12px; background: {field};
+  box-shadow: 0 0 0 3px {accent}22; }}
+.st-key-{PANEL_KEY} [data-testid="stChatInput"] textarea {{ color: {fg}; }}
+.st-key-{PANEL_KEY} [data-testid="stChatInput"] textarea::placeholder {{ color: {muted}; opacity: 1; }}
 .st-key-{PANEL_KEY} button {{ min-height: 32px; padding: 2px 10px; font-size: 0.85rem; }}
+/* Drag the bottom-right corner of the conversation to make it taller or shorter. */
+.st-key-cc_messages {{ resize: vertical; min-height: 160px; max-height: calc(100vh - 260px); }}
+.st-key-cc_suggestions button {{ border-radius: 999px; min-height: 28px; font-size: 0.8rem; background: {raised};
+  border: 1px solid {accent}66; color: {fg}; }}
+.st-key-cc_suggestions button:hover {{ border-color: {accent}; color: {accent}; }}
+/* Result cards: tinted block with an accent bar instead of a second bordered box. */
+.st-key-{PANEL_KEY} [class*="st-key-cc_card_"] {{ background: {raised}; border-left: 3px solid {accent};
+  border-radius: 8px; padding: 10px 12px; }}
 @media (max-width: 640px) {{
   .st-key-{PANEL_KEY} {{ left: 8px; width: calc(100vw - 16px); bottom: 76px; max-height: calc(100vh - 92px); }}
   .st-key-{LAUNCHER_KEY} {{ left: 8px; bottom: 8px; }}
@@ -64,11 +89,63 @@ def _metric_lines(m: Mapping[str, Any]) -> str:
             f"- Gross outlay: **{gbp(m['total_cost_gbp'])}** · net cash {gbp(m['net_cash_impact_gbp'])}")
 
 
+DATA_CARD_TITLES = {"company_profile": "Company data used", "action_comparison": "Action comparison used",
+                    "public_reference": "Wincanton reference used"}
+ACTION_CARD_KINDS = ("baseline", "simulation", "optimization", "risk")
+
+
+def _data_card(kind: str, data: Mapping[str, Any]) -> None:
+    """Compact view of the facts a read-only data tool gave the model, so answers can be checked."""
+    if kind == "company_profile":
+        f = data["baseline_forecast"]["emissions"]
+        st.markdown(f"**Forecast** {data['baseline_forecast']['period']}: {tonnes(f['total_tco2e'])} · Scope 1 "
+                    f"{f['share_pct']['scope1']}% · Scope 2 {f['share_pct']['scope2']}% · Scope 3 {f['share_pct']['scope3']}%")
+        hist = data.get("history")
+        if hist:
+            w = hist["last_12_months"]
+            line = (f"**Last 12 months** {w['period']}: {tonnes(w['emissions']['total_tco2e'])}, operating profit "
+                    f"{gbp(w['operating_profit_gbp'])} ({w['operating_margin_pct']}% margin)")
+            change = hist.get("change_last_12_vs_previous_12_pct")
+            if change:
+                line += f" · emissions {change['total_co2e_tco2e']:+}% vs the year before"
+            st.markdown(line)
+            if hist["not_reported_in_data"]:
+                st.caption("Not reported in the data: " + ", ".join(hist["not_reported_in_data"]))
+        st.caption(data["data_note"])
+    elif kind == "action_comparison":
+        lines = []
+        for r in data["actions"]:
+            m = r["alone_at_full_adoption_over_horizon"]
+            if r["has_effect_for_this_company"]:
+                per_t = gbp(m["outlay_per_tonne_cut_gbp"]) if m["outlay_per_tonne_cut_gbp"] is not None else "n/a"
+                lines.append(f"- **{r['label']}**: {tonnes(m['co2_cut_tco2e'])} ({m['co2_cut_pct_of_total_baseline']}%) · "
+                             f"{per_t}/t")
+            else:
+                lines.append(f"- {r['label']}: no effect for this company")
+        st.markdown("\n".join(lines))
+        st.caption("Each action alone at full adoption over the horizon. Costs are illustrative assumptions.")
+    elif kind == "public_reference":
+        d = data["derived_from_figures"]
+        st.markdown(f"**{data['company']}** · {data['period']} · [source]({data['source']['url']})\n"
+                    f"- Transport fuel: {d['transport_fuel_share_of_scope1_2_pct']}% of Scope 1+2\n"
+                    f"- Scope 1+2 per £m revenue: {d['scope1_2_tco2e_per_gbp_million_revenue']} tCO2e")
+        sc = data.get("electricity_scenario")
+        if sc:
+            st.markdown(f"- {sc['reduction_pct']}% less electricity: {tonnes(sc['co2e_saved_tco2e_per_year'])} saved/year")
+        st.caption("A separate real company, used only as a reference.")
+
+
 def render_card(card: Mapping[str, Any], *, stale: bool, dash: DashboardState) -> None:
     data = card["data"]
     kind = data.get("kind")
     mock = " · test data" if data.get("is_mock") else ""
-    with st.container(border=True):
+    if kind in DATA_CARD_TITLES:
+        with st.expander(DATA_CARD_TITLES[kind], icon=":material/dataset:"):
+            _data_card(kind, data)
+        return
+    if kind not in ACTION_CARD_KINDS:
+        return  # nothing to show; never draw an empty box
+    with st.container(key=f"cc_card_{card['id']}"):  # styled as a tinted block with an accent bar, not a box
         if stale:
             st.caption("From a previous analysis context; re-ask to refresh. Apply is disabled.")
         if kind == "baseline":
@@ -127,10 +204,10 @@ def _provider_from_env() -> tuple[ChatbotConfig | None, ChatModelProvider | None
 
 def _render_message(m: Mapping[str, Any], *, context: AnalysisContext | None, dash: DashboardState, chat: ChatState) -> None:
     if m["role"] == "user":
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar=":material/person:"):
             st.markdown(m["content"])
         return
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=":material/eco:"):
         if m.get("is_mock"):
             st.caption("Guided assistant · recognises preset questions and uses dashboard tools")
         if m["error"]:
@@ -150,7 +227,8 @@ def _render_message(m: Mapping[str, Any], *, context: AnalysisContext | None, da
 
 def render_chat(dash: DashboardState, services: Services, request: AnalysisRequest, *, dark: bool) -> None:
     chat = ChatState(st.session_state)
-    st.html(_css(dark))
+    size = st.session_state.get(SIZE_KEY) or "compact"
+    st.html(_css(dark, size))
     with st.container(key=LAUNCHER_KEY):
         st.button(":material/close:" if chat.is_open else ":material/chat:", key="cc_toggle",
                   type="primary", on_click=lambda: chat.set_open(not chat.is_open),
@@ -161,27 +239,43 @@ def render_chat(dash: DashboardState, services: Services, request: AnalysisReque
     config, provider, config_error = _provider_from_env()
     context = None
     if dash.baseline is not None:
-        context = AnalysisContext(services, request, dash.baseline, dash.analysis, dash.selected_strategy())
+        context = AnalysisContext(services, request, dash.baseline, dash.analysis, dash.selected_strategy(),
+                                  history=dash.history)
 
     with st.container(key=PANEL_KEY):
-        head, clear, close = st.columns([5, 3, 3], vertical_alignment="center")
-        head.markdown("**CarbonOpt assistant**")
-        clear.button("Clear", key="cc_clear", on_click=chat.clear, help="Clear this conversation (the dashboard is unchanged)")
-        close.button("Close", key="cc_close", on_click=chat.set_open, args=(False,), help="Close the assistant")
-        if config_error:
-            logger.error("Assistant configuration: %s", config_error)
-            st.error("The assistant is currently unavailable. Please contact the application administrator.", icon="🛑")
-        elif provider is not None:
-            label = "Guided assistant · recognises preset questions" if provider.info.is_mock else "Assistant"
-            st.caption(f"{label} · answers use your current analysis")
+        head = st.container(key="cc_head")
+        with head.container(horizontal=True, vertical_alignment="center", gap="small"):
+            st.markdown("**CarbonOpt assistant**", width="stretch")
+            st.button(":material/delete_sweep:", key="cc_clear", on_click=chat.clear,
+                      help="Clear this conversation (the dashboard is unchanged)")
+            st.button(":material/close:", key="cc_close", on_click=chat.set_open, args=(False,),
+                      help="Close the assistant")
+        with head.container(horizontal=True, vertical_alignment="center", gap="small"):
+            if config_error:
+                logger.error("Assistant configuration: %s", config_error)
+                st.error("The assistant is currently unavailable. Please contact the application administrator.",
+                         icon="🛑", width="stretch")
+            elif provider is not None:
+                hosts = {"lmstudio": "LM Studio", "ollama": "Ollama"}
+                label = ("Guided assistant · recognises preset questions" if provider.info.is_mock else
+                         f"AI model · {provider.info.version} via {hosts.get(config.provider, config.provider)}")
+                st.caption(f"{label} · answers use your current analysis", width="stretch")
+            st.segmented_control("Panel size", list(SIZES), default="compact", required=True, key=SIZE_KEY,
+                                 format_func=SIZE_ICONS.get, label_visibility="collapsed",
+                                 help="Panel size: compact, large or full width. Drag the conversation's bottom-right corner to change its height.")
         if not services.capabilities.risk_available:
             st.caption("Uncertainty analysis is currently unavailable.")
 
-        area = st.container(height=240, key="cc_messages")
+        area = st.container(height=SIZES[size][1], border=False, key="cc_messages")  # no box inside the box
         with area:
             if not chat.messages:
-                st.caption("Ask about the baseline, the selected strategy, a what-if, a plan under a budget, or risk. "
-                           "Action values are fractions of remaining opportunity; say '80%' for a final share.")
+                # Intro text, not a chat message: the conversation itself stays empty until the user asks.
+                st.markdown(":material/eco: **Hi! Ask me in your own words**: where your emissions come from, which "
+                            "actions work best, what-ifs, a plan within your budget, or the risk of missing your target.")
+                st.caption("Tip: say '80%' for a final share, for example 'What if EV share becomes 80%?'")
+                with st.container(horizontal=True, gap="small", key="cc_suggestions"):
+                    for i, text in enumerate(SUGGESTIONS):
+                        st.button(text, key=f"cc_sugg_{i}", on_click=chat.submit, args=(text,), width="content")
             for m in chat.messages:
                 _render_message(m, context=context, dash=dash, chat=chat)
             pending = chat.pending_turn()
@@ -191,9 +285,6 @@ def render_chat(dash: DashboardState, services: Services, request: AnalysisReque
                         chat.process(pending, provider, context, config_error)
                 st.rerun()
 
-        if not chat.messages:
-            for i, text in enumerate(SUGGESTIONS):
-                st.button(text, key=f"cc_sugg_{i}", on_click=chat.submit, args=(text,), width="stretch")
         prompt = st.chat_input("Ask the assistant…", key="cc_input")
         if prompt:
             chat.submit(prompt)

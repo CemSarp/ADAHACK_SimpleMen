@@ -12,6 +12,7 @@ from src.llm.providers import (
     ChatInvalidResponse,
     ChatServerError,
     ChatTimeoutError,
+    LMStudioChatProvider,
     MockChatProvider,
     OllamaChatProvider,
     create_chat_provider,
@@ -187,3 +188,81 @@ def test_mock_asks_for_clarification_on_ambiguous_percent_and_unknown_requests()
 
 def test_mock_connection_check_has_no_network():
     assert MockChatProvider().check_connection().ok
+
+
+# ----------------------------- LM Studio adapter ---------------------------- #
+
+
+def lm(**env) -> ChatbotConfig:
+    return ChatbotConfig.from_env({"CHATBOT_PROVIDER": "lmstudio", **env})
+
+
+def test_lmstudio_defaults_point_at_local_server_and_gemma():
+    c = lm()
+    assert (c.base_url, c.model, c.timeout_seconds, c.max_output_tokens) == (
+        "http://localhost:1234/v1", "google/gemma-4-12b", 300.0, 4096)
+    assert isinstance(create_chat_provider(c), LMStudioChatProvider)
+    c = lm(LMSTUDIO_BASE_URL="http://127.0.0.1:5000/v1", LMSTUDIO_MODEL="other", LMSTUDIO_TIMEOUT_SECONDS="30")
+    assert (c.base_url, c.model, c.timeout_seconds) == ("http://127.0.0.1:5000/v1", "other", 30.0)
+    with pytest.raises(ChatConfigurationError, match="LMSTUDIO_BASE_URL"):
+        lm(LMSTUDIO_BASE_URL="ftp://x")
+
+
+def test_lmstudio_request_uses_openai_wire_format_with_paired_ids():
+    t = FakeTransport([(200, {"choices": [{"message": {"role": "assistant", "content": "done"}}]})])
+    history = [ChatMessage("system", "sys"), ChatMessage("user", "q"),
+               ChatMessage("assistant", "", tool_calls=(ToolCall("simulate_strategy", {"actions": {"ev_adoption": 0.5}},
+                                                                 id="call_x"),)),
+               ChatMessage("tool", '{"status":"ok"}', tool_name="simulate_strategy", tool_call_id="call_x"),
+               ChatMessage("assistant", "", tool_calls=(ToolCall("get_baseline", {}),)),
+               ChatMessage("tool", '{"status":"ok"}', tool_name="get_baseline")]
+    LMStudioChatProvider(lm(), transport=t).chat(history, TOOL_SPECS)
+    call = t.calls[0]
+    assert (call["method"], call["url"]) == ("POST", "http://localhost:1234/v1/chat/completions")
+    body = call["body"]
+    assert (body["model"], body["temperature"], body["max_tokens"], body["stream"]) == ("google/gemma-4-12b", 0, 4096, False)
+    first_call = body["messages"][2]["tool_calls"][0]
+    assert first_call == {"id": "call_x", "type": "function",
+                          "function": {"name": "simulate_strategy", "arguments": '{"actions": {"ev_adoption": 0.5}}'}}
+    assert body["messages"][3] == {"role": "tool", "content": '{"status":"ok"}', "tool_call_id": "call_x"}
+    # A call without an id gets one, and its result is paired with it.
+    assert body["messages"][5]["tool_call_id"] == body["messages"][4]["tool_calls"][0]["id"]
+    assert "Authorization" not in call["headers"] and call["timeout"] == 300.0
+
+
+def test_lmstudio_parses_tool_calls_strips_thinking_and_assigns_ids():
+    t = FakeTransport([(200, {"choices": [{"message": {"role": "assistant", "content": "<think>plan</think>", "tool_calls": [
+        {"id": "a1", "type": "function", "function": {"name": "compare_actions", "arguments": "{}"}},
+        {"type": "function", "function": {"name": "get_baseline", "arguments": ""}}]}}]})])
+    r = LMStudioChatProvider(lm(), transport=t).chat([ChatMessage("user", "q")], TOOL_SPECS)
+    assert r.text == ""
+    assert r.tool_calls == (ToolCall("compare_actions", {}, id="a1"), ToolCall("get_baseline", {}, id="call_1"))
+
+
+@pytest.mark.parametrize("payload,match", [
+    ({"choices": []}, "choices"),
+    ({"choices": [{"message": {"content": ""}}]}, "neither text nor a tool call"),
+    ({"choices": [{"message": {"content": "", "tool_calls": [{"function": {"name": "x", "arguments": "{bad"}}]}}]},
+     "not valid JSON"),
+])
+def test_lmstudio_invalid_responses(payload, match):
+    with pytest.raises(ChatInvalidResponse, match=match):
+        LMStudioChatProvider(lm(), transport=FakeTransport([(200, payload)])).chat([ChatMessage("user", "q")], [])
+
+
+def test_lmstudio_error_body_and_connection_check():
+    t = FakeTransport([(400, {"error": {"message": "No models loaded"}})])
+    with pytest.raises(ChatServerError, match="No models loaded"):
+        LMStudioChatProvider(lm(), transport=t).chat([ChatMessage("user", "q")], [])
+    t = FakeTransport([(200, {"data": [{"id": "google/gemma-4-12b"}, {"id": "other"}]}), (200, {"data": []})])
+    p = LMStudioChatProvider(lm(), transport=t)
+    ok = p.check_connection()
+    assert ok.ok and ok.models == ("google/gemma-4-12b", "other") and t.calls[0]["url"].endswith("/v1/models")
+    assert not p.check_connection().ok
+
+
+def test_lmstudio_thinking_past_the_budget_becomes_a_plain_message_not_a_failure():
+    # Seen live: Gemma 4 reasoned until max_tokens and returned empty content with finish_reason "length".
+    payload = {"choices": [{"message": {"content": "", "reasoning_content": "long thoughts"}, "finish_reason": "length"}]}
+    r = LMStudioChatProvider(lm(), transport=FakeTransport([(200, payload)])).chat([ChatMessage("user", "q")], [])
+    assert "ran out of room" in r.text and not r.tool_calls

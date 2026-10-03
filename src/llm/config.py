@@ -6,12 +6,21 @@ from dataclasses import dataclass
 from typing import Mapping
 from urllib.parse import urlsplit
 
-PROVIDERS = ("mock", "ollama")
+PROVIDERS = ("mock", "ollama", "lmstudio")
 DEFAULT_MODEL = "llama3.1:8b"
 DEFAULT_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_OUTPUT_TOKENS = 512
+# Env-var prefix and defaults per provider: (base_url, model, timeout_seconds, max_output_tokens).
+ENV_PREFIX = {"mock": "OLLAMA", "ollama": "OLLAMA", "lmstudio": "LMSTUDIO"}
+PROVIDER_DEFAULTS = {
+    "mock": (None, DEFAULT_MODEL, DEFAULT_TIMEOUT_SECONDS, DEFAULT_MAX_OUTPUT_TOKENS),
+    "ollama": (None, DEFAULT_MODEL, DEFAULT_TIMEOUT_SECONDS, DEFAULT_MAX_OUTPUT_TOKENS),
+    # LM Studio's OpenAI-compatible server on this machine. Reasoning models such as Gemma 4 spend output tokens
+    # thinking before they answer, so the budget and timeout leave room for that.
+    "lmstudio": ("http://localhost:1234/v1", "google/gemma-4-12b", 300.0, 4096),
+}
 MAX_TIMEOUT_SECONDS = 600.0
-MAX_OUTPUT_TOKENS_LIMIT = 4096
+MAX_OUTPUT_TOKENS_LIMIT = 8192
 
 
 class ChatConfigurationError(ValueError):
@@ -37,11 +46,13 @@ class ChatbotConfig:
         provider = (environ.get("CHATBOT_PROVIDER") or "mock").strip().lower()
         if provider not in PROVIDERS:
             raise ChatConfigurationError(f"CHATBOT_PROVIDER must be one of {list(PROVIDERS)}, got {provider!r}")
-        base_url = (environ.get("OLLAMA_BASE_URL") or "").strip() or None
-        model = (environ.get("OLLAMA_MODEL") or "").strip() or DEFAULT_MODEL
-        timeout = _number(environ, "OLLAMA_TIMEOUT_SECONDS", DEFAULT_TIMEOUT_SECONDS, float)
-        tokens = _number(environ, "OLLAMA_MAX_OUTPUT_TOKENS", DEFAULT_MAX_OUTPUT_TOKENS, int)
-        api_key = (environ.get("OLLAMA_API_KEY") or "").strip() or None
+        env = ENV_PREFIX[provider]
+        default_url, default_model, default_timeout, default_tokens = PROVIDER_DEFAULTS[provider]
+        base_url = (environ.get(f"{env}_BASE_URL") or "").strip() or default_url
+        model = (environ.get(f"{env}_MODEL") or "").strip() or default_model
+        timeout = _number(environ, f"{env}_TIMEOUT_SECONDS", default_timeout, float)
+        tokens = _number(environ, f"{env}_MAX_OUTPUT_TOKENS", default_tokens, int)
+        api_key = (environ.get(f"{env}_API_KEY") or "").strip() or None
         config = cls(provider=provider, base_url=base_url, model=model, timeout_seconds=timeout,
                      max_output_tokens=tokens, api_key=api_key)
         config.validate()
@@ -50,22 +61,23 @@ class ChatbotConfig:
     def validate(self) -> "ChatbotConfig":
         if self.provider not in PROVIDERS:
             raise ChatConfigurationError(f"CHATBOT_PROVIDER must be one of {list(PROVIDERS)}")
+        env = ENV_PREFIX[self.provider]
         if not 0 < self.timeout_seconds <= MAX_TIMEOUT_SECONDS:
-            raise ChatConfigurationError(f"OLLAMA_TIMEOUT_SECONDS must be within (0, {MAX_TIMEOUT_SECONDS:g}]")
+            raise ChatConfigurationError(f"{env}_TIMEOUT_SECONDS must be within (0, {MAX_TIMEOUT_SECONDS:g}]")
         if not 0 < self.max_output_tokens <= MAX_OUTPUT_TOKENS_LIMIT:
-            raise ChatConfigurationError(f"OLLAMA_MAX_OUTPUT_TOKENS must be within (0, {MAX_OUTPUT_TOKENS_LIMIT}]")
-        if self.provider == "ollama":
+            raise ChatConfigurationError(f"{env}_MAX_OUTPUT_TOKENS must be within (0, {MAX_OUTPUT_TOKENS_LIMIT}]")
+        if self.provider != "mock":
             if not self.base_url:
                 raise ChatConfigurationError(
-                    "CHATBOT_PROVIDER=ollama requires OLLAMA_BASE_URL (the remote Ollama endpoint); "
-                    "no local server is assumed and the mock is not used as a fallback")
+                    f"CHATBOT_PROVIDER={self.provider} requires {env}_BASE_URL; "
+                    "the mock is not used as a fallback")
             parts = urlsplit(self.base_url)
             if parts.scheme not in ("http", "https") or not parts.hostname:
-                raise ChatConfigurationError("OLLAMA_BASE_URL must look like http(s)://host[:port]")
+                raise ChatConfigurationError(f"{env}_BASE_URL must look like http(s)://host[:port]")
             if parts.username or parts.password:
-                raise ChatConfigurationError("OLLAMA_BASE_URL must not contain credentials; use OLLAMA_API_KEY")
+                raise ChatConfigurationError(f"{env}_BASE_URL must not contain credentials; use {env}_API_KEY")
             if parts.query or parts.fragment:
-                raise ChatConfigurationError("OLLAMA_BASE_URL must not contain a query or fragment")
+                raise ChatConfigurationError(f"{env}_BASE_URL must not contain a query or fragment")
         return self
 
 

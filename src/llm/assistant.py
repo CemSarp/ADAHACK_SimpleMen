@@ -102,7 +102,7 @@ def run_turn(
                 record.results[key] = result
                 record.order.append(key)
             messages.append(ChatMessage("tool", json.dumps(tool_result_payload(result), allow_nan=False),
-                                        tool_name=call.name))
+                                        tool_name=call.name, tool_call_id=call.id))
     results = tuple(record.results[k] for k in record.order)
     if not final_text:
         last = results[-1] if results else None

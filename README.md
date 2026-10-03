@@ -158,15 +158,25 @@ One-minute demo: open **Real data and sources** → show the report link and 77,
 
 ## 💬 Assistant (chatbot)
 
-A floating button at the bottom-left opens the assistant. By default it is a **guided assistant** that recognises preset questions and runs dashboard tools offline. The real model is a **remote Ollama server** running `llama3.1:8b`. This repository only contains the client: it downloads no weights and installs no server.
+A floating button at the bottom-left opens the assistant. By default it is a **guided assistant** that recognises preset questions and runs dashboard tools offline. For a real model, use a **local LM Studio server** (for example `google/gemma-4-12b`) or a **remote Ollama server**. This repository only contains the client: it downloads no weights and installs no server.
 
-The model interprets language and explains results. It calls an allow-listed set of tools, and the app validates every call before running it through the same providers as the UI.
+The model interprets language and explains results. It calls an allow-listed set of tools, and the app validates every call before running it through the same providers as the UI. Besides baseline, what-if, optimization and risk, three read-only data tools give it the facts to answer sensibly, with every number pre-computed so the model never does arithmetic:
+
+| Tool | What the model learns |
+|---|---|
+| `get_company_profile` | Last 12 months vs the previous 12 (emissions by scope and share, revenue, profit, margin, intensity), current renewable/EV shares, what is *not* reported, forecast vs history |
+| `compare_actions` | Each of the six actions alone at full adoption, run through the simulator: CO₂ cut, profit effect, outlay and £ per tonne, ranked; flags actions with no effect for this company |
+| `get_public_reference` | Wincanton FY2024 figures, derived shares, a plain Scope 1/2/3 explanation and the GOV.UK electricity scenario, labelled as a separate real company |
 
 The app does not auto-load `.env`, so export variables in your shell (copy [`.env.example`](.env.example) as a starting point):
 
 ```bash
 # guided assistant (default)
 python -m streamlit run app.py
+
+# local model in LM Studio (start its server and load the model first)
+lms server start && lms load google/gemma-4-12b
+CHATBOT_PROVIDER=lmstudio python -m streamlit run app.py
 
 # remote model, once you have an endpoint
 CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<your-ollama-host> \
@@ -175,7 +185,9 @@ python -m streamlit run app.py
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `CHATBOT_PROVIDER` | `mock` or `ollama` | `mock` |
+| `CHATBOT_PROVIDER` | `mock`, `lmstudio` or `ollama` | `mock` |
+| `LMSTUDIO_BASE_URL` / `LMSTUDIO_MODEL` | LM Studio server and model | `http://localhost:1234/v1` / `google/gemma-4-12b` |
+| `LMSTUDIO_TIMEOUT_SECONDS` / `LMSTUDIO_MAX_OUTPUT_TOKENS` / `LMSTUDIO_API_KEY` | Limits and optional token (Gemma 4 thinks before answering, so keep the budget generous) | `300` / `4096` / none |
 | `OLLAMA_BASE_URL` | Remote endpoint, required for `ollama` | none |
 | `OLLAMA_MODEL` | Model tag | `llama3.1:8b` |
 | `OLLAMA_TIMEOUT_SECONDS` / `OLLAMA_MAX_OUTPUT_TOKENS` | Limits | `60` / `512` |

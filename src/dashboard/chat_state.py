@@ -26,6 +26,8 @@ SUGGESTIONS = (
     "What if EV share becomes 80%?",
     "Find a plan within a £500k budget.",
     "How likely are we to meet our target?",
+    "Where do our emissions come from?",
+    "Which action cuts the most CO₂?",
 )
 
 
