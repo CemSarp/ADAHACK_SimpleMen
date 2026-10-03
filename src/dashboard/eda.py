@@ -18,7 +18,7 @@ GRID = "#1e2833"
 INK = "#d6ffe6"
 MUTED = "#6f8a7c"
 GREEN = "#39ff88"
-AMBER = "#ffb000"
+ACCENT = "#4cc9f0"
 PIXEL_HEAD = "'Press Start 2P', monospace"
 PIXEL_BODY = "'VT323', monospace"
 
@@ -38,7 +38,7 @@ _CSS = f"""
 }}
 .eda-title {{ font-family: {PIXEL_HEAD}; color: {GREEN}; font-size: 11px; letter-spacing: 1px; margin: 0 0 .6rem 0; }}
 .eda-sub {{ font-family: {PIXEL_BODY}; color: {MUTED}; font-size: 22px; margin: 0 0 1rem 0; }}
-.eda-label {{ font-family: {PIXEL_HEAD}; color: {AMBER}; font-size: 8px; margin: 0 0 .2rem 0; }}
+.eda-label {{ font-family: {PIXEL_HEAD}; color: {ACCENT}; font-size: 8px; margin: 0 0 .2rem 0; }}
 .eda-tiles {{ display: flex; flex-wrap: wrap; gap: 8px; margin: .3rem 0 .2rem 0; }}
 .eda-tile {{ flex: 1 1 90px; background: {PANEL}; border: 1px solid {GRID}; padding: .35rem .5rem; }}
 .eda-tile .k {{ font-family: {PIXEL_HEAD}; color: {MUTED}; font-size: 7px; margin-bottom: .25rem; }}
@@ -98,7 +98,7 @@ def _figure(df: pd.DataFrame, column: str, months: int) -> go.Figure:
     fig.add_scatter(x=window["date"], y=window[column] * scale, mode="lines", line=dict(color=GREEN, width=2, shape="hv"),
                     name=_label(column), hovertemplate="%{x|%b %Y}<br>%{y:,.4g}<extra></extra>")
     if months > 12:
-        fig.add_scatter(x=window["date"], y=rolling * scale, mode="lines", line=dict(color=AMBER, width=2, dash="dot"),
+        fig.add_scatter(x=window["date"], y=rolling * scale, mode="lines", line=dict(color=ACCENT, width=2, dash="dot"),
                         name="12M AVG", hovertemplate="%{x|%b %Y}<br>%{y:,.4g}<extra>12M AVG</extra>")
     fig.update_layout(
         height=260, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor=BG, plot_bgcolor=BG, font=font,

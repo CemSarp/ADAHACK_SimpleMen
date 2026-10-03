@@ -41,6 +41,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import sys
 import time
 import warnings
@@ -77,11 +78,16 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Benign: RandomForestRegressor(n_jobs=-1) dispatches through joblib's default
-# backend, which cannot propagate sklearn's thread-local config to workers.
-# It does not affect results, so it is silenced at import time (not only under
-# ``__main__``) so it stays quiet from notebooks and other callers too.
+# Benign: RandomForestRegressor(n_jobs=-1) dispatches through joblib, whose
+# workers cannot receive sklearn's thread-local config. It does not affect
+# results. It is silenced at import time (not only under ``__main__``) and also
+# through PYTHONWARNINGS, because joblib worker processes start with empty
+# warning filters and only inherit the environment.
+warnings.filterwarnings("ignore", category=UserWarning, module=r"sklearn\.utils\.parallel")
 warnings.filterwarnings("ignore", message=".*sklearn.utils.parallel.delayed.*")
+_WORKER_FILTER = "ignore::UserWarning:sklearn.utils.parallel"
+if _WORKER_FILTER not in os.environ.get("PYTHONWARNINGS", ""):
+    os.environ["PYTHONWARNINGS"] = ",".join(filter(None, [os.environ.get("PYTHONWARNINGS"), _WORKER_FILTER]))
 
 
 @dataclass(frozen=True)
@@ -514,12 +520,13 @@ class ModellingConfig:
         seed: Random seed for the models.
         output_dir: Directory where all results are saved.
         generator_config: Configuration of the synthetic data generator.
+        models: Names of the models to run; ``None`` runs every available one.
     """
 
     targets: tuple[str, ...] = ("emissions", "profit")
     horizon: int = 3
     test_months: int = 24
-    backtest_months: int = 12
+    backtest_months: int = 6
     step: int = 1
     selection_metric: str = "wape"
     interval: float = 0.8
@@ -527,6 +534,7 @@ class ModellingConfig:
     seed: int = 42
     output_dir: Path = Path(__file__).resolve().parent / "temp_outputs" / "modelling_results"
     generator_config: GeneratorConfig = field(default_factory=GeneratorConfig)
+    models: tuple[str, ...] | None = None
 
 
 class ForecastingPipeline:
@@ -588,6 +596,7 @@ class ForecastingPipeline:
             The summary dictionary that is also written to ``summary.json``.
         """
         logger.info("=== Target: %s (%s) ===", self.key, self.spec.column)
+        started = time.perf_counter()
         self.split_data()
         self.backtest()
         self.evaluate_on_test()
@@ -595,6 +604,7 @@ class ForecastingPipeline:
         self.fit_final_and_forecast()
         summary = self.save_results()
         self.report()
+        logger.info("Target %s finished in %.1fs.", self.key, time.perf_counter() - started)
         return summary
 
     def split_data(self) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -1064,6 +1074,8 @@ class ForecastingPipeline:
         else:
             logger.warning("prophet not installed; skipping Prophet.")
         models["SeasonalNaive"] = lambda: SeasonalNaiveForecaster(spec, cfg.horizon)
+        if cfg.models is not None:
+            models = {name: factory for name, factory in models.items() if name in cfg.models}
         return models
 
 
@@ -1123,9 +1135,26 @@ def run_all(config: ModellingConfig | None = None, data: pd.DataFrame | None = N
     return summary
 
 
+def _parse_args(argv: list[str] | None = None):
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Run the multi-target forecasting pipeline.")
+    parser.add_argument("--models", nargs="+", help="Models to run (default: all available).")
+    parser.add_argument("--data", type=Path, help="CSV with a 'date' column (default: generate synthetic data).")
+    parser.add_argument("--output-dir", type=Path, help="Where to save results.")
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
+    args = _parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     for noisy in ("cmdstanpy", "prophet"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     plt.switch_backend("Agg")
-    run_all()
+    overrides = {}
+    if args.models:
+        overrides["models"] = tuple(args.models)
+    if args.output_dir:
+        overrides["output_dir"] = args.output_dir
+    run_all(ModellingConfig(**overrides),
+            data=pd.read_csv(args.data, parse_dates=["date"]) if args.data else None)
