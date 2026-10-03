@@ -24,7 +24,7 @@ from src.data_sources.public_data import (
 )
 
 KEY = "co_grounding_"
-DEFAULT_TARIFF = 0.25  # illustrative, not a Wincanton tariff
+DEFAULT_TARIFF_P = 25.0  # p/kWh; illustrative, not a Wincanton tariff
 CCF_URL = "https://github.com/cloud-carbon-footprint/cloud-carbon-footprint"
 CCF_METHOD_URL = "https://www.cloudcarbonfootprint.org/docs/methodology/"
 CARBON_INTENSITY_DOCS = "https://carbon-intensity.github.io/api-definitions/"
@@ -73,20 +73,23 @@ def _calculator(ref: dict, factor: dict) -> None:
                           help="Defaults to reported FY2024 non-transport electricity (77,485 MWh).")
     pct = c2.slider("Consumption reduction (%)", 0, 100, 10, key=KEY + "reduction_pct",
                     help="Assumption. No claim that Wincanton can achieve it.")
-    tariff = c3.number_input("Tariff (£/kWh, illustrative)", min_value=0.0, value=DEFAULT_TARIFF, step=0.01,
-                             format="%.3f", key=KEY + "tariff")
+    # Pence, as UK tariffs are quoted; also avoids "0,250" in comma-decimal browser locales.
+    tariff_p = c3.number_input("Tariff (p/kWh, illustrative)", min_value=0.0, value=DEFAULT_TARIFF_P, step=0.5,
+                               format="%.1f", key=KEY + "tariff_p")
     if kwh != reported_kwh:
         st.caption("Custom activity: user-entered, not a reported company value.")
     try:
-        r = calculate_electricity_scenario(kwh, pct / 100.0, tariff, factor=factor)
+        r = calculate_electricity_scenario(kwh, pct / 100.0, tariff_p / 100.0, factor=factor)
     except ValueError as exc:
         st.error(str(exc))
         return
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Electricity saving (2026-factor scenario using FY2024 activity)", f"{r['saved_tco2e']:,.2f} tCO2e")
-    m2.metric("Modelled baseline → scenario", f"{r['baseline_tco2e']:,.0f} → {r['scenario_tco2e']:,.0f} tCO2e")
-    m3.metric("Gross energy-cost saving", f"£{r['gross_energy_savings_gbp']:,.0f}")
+    st.markdown("**2026-factor scenario using FY2024 activity**")
+    with st.container(horizontal=True):  # wraps instead of truncating on narrow screens
+        st.metric("CO₂e saved (tCO2e)", f"{r['saved_tco2e']:,.2f}", border=True)
+        st.metric("Scenario emissions (tCO2e)", f"{r['scenario_tco2e']:,.0f}", border=True)
+        st.metric("Gross energy-cost saving (£)", f"{r['gross_energy_savings_gbp']:,.0f}", border=True)
     st.caption(
+        f"Modelled baseline {r['baseline_tco2e']:,.2f} → scenario {r['scenario_tco2e']:,.2f} tCO2e. "
         f"tCO2e = kWh × (1 − reduction) × {factor['value']} kgCO2e/kWh ÷ 1,000. Official factor: GOV.UK {factor['year']} "
         f"v{factor['version']}, factor ID `{factor['factor_id']}` ({factor['sheet']}, row {factor['row']}). "
         "Shown as gross energy-cost savings before capex/opex — not profit. This is a 2026-factor sensitivity "

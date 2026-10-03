@@ -12,7 +12,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 from tests.support import REPO_ROOT  # noqa: E402
 
 APP = str(REPO_ROOT / "app.py")
-SAVING = "Electricity saving (2026-factor scenario using FY2024 activity)"
+SAVING = "CO₂e saved (tCO2e)"
 
 
 def _no_network(*args, **kwargs):
@@ -52,7 +52,8 @@ def test_section_loads_offline_with_sources_and_historical_label(app):
         assert url in text, url
     assert "planned; current cloud estimates illustrative" in text
     assert "7_400_4000_5_1" in text and "gross energy-cost savings before capex/opex" in text
-    assert _metric(app, SAVING) == "1,014.74 tCO2e"
+    assert _metric(app, SAVING) == "1,014.74" and "2026-factor scenario using FY2024 activity" in text
+    assert _metric(app, "Gross energy-cost saving (£)") == "1,937,125"
     # Existing provenance surfaces are unchanged: synthetic company caption and provider details.
     assert any("Company `demo-company`" in c for c in _texts(app.caption))
     assert "Provenance and run details" in [e.label for e in app.expander]
@@ -62,7 +63,7 @@ def test_calculator_change_leaves_optimizer_company_untouched(app):
     before = app.session_state["cos_baseline"]
     app.slider(key="co_grounding_reduction_pct").set_value(20).run()
     assert not app.exception, [e.message for e in app.exception]
-    assert _metric(app, SAVING) == "2,029.49 tCO2e"
+    assert _metric(app, SAVING) == "2,029.49"
     after = app.session_state["cos_baseline"]
     assert (after.baseline_id, after.company_id) == (before.baseline_id, before.company_id)
     assert after.company_id == "demo-company"
