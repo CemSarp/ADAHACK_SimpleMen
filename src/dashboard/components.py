@@ -95,39 +95,6 @@ def company_context(state: DashboardState, dark: bool) -> None:
             e = state.baseline_error
             error_box(e.kind, e.error_type, e.message)
         return
-    history = state.history
-    st.subheader("Baseline forecast")
-    st.caption(
-        "Expected emissions and operating profit if operations continue without new actions. "
-        "Financial planning values are shown in pounds; source data in the explorer uses its original currency."
-    )
-    tiles: list[dict[str, Any]] = []
-    if history is not None and len(history):
-        trailing = trailing_window(history, 12)
-        window = period_label(trailing["timestamp"])
-        tiles += [
-            {"label": "Emissions, trailing 12 months (history)", "value": tonnes(float(trailing["total_co2e_tco2e"].sum())),
-             "help": f"Historical {window}."},
-            {"label": "Operating profit, trailing 12 months (history)", "value": gbp(float(trailing["operating_profit_gbp"].sum())),
-             "help": f"Historical {window}."},
-        ]
-    horizon = period_label(baseline.monthly["timestamp"])
-    tiles += [
-        {"label": "Baseline forecast emissions", "value": tonnes(baseline.totals["total_co2e_tco2e"]),
-         "help": f"Business-as-usual forecast, {horizon}."},
-        {"label": "Baseline forecast operating profit", "value": gbp(baseline.totals["operating_profit_gbp"]),
-         "help": f"Cumulative over {horizon}."},
-    ]
-    kpi_row(tiles)
-    st.caption(
-        f"History: {period_label(history['timestamp']) if history is not None and len(history) else 'not provided'} · "
-        f"Forecast: {period_label(baseline.monthly['timestamp'])}. Historical totals and forecast totals cover different periods."
-    )
-    tab_e, tab_p = st.tabs(["Emissions", "Operating profit"])
-    with tab_e:
-        st.plotly_chart(charts.history_and_baseline(history, baseline, "total_co2e_tco2e", dark=dark), width="stretch")
-    with tab_p:
-        st.plotly_chart(charts.history_and_baseline(history, baseline, "operating_profit_gbp", dark=dark), width="stretch")
 
 
 def backtest_panel(state: DashboardState, dark: bool) -> None:

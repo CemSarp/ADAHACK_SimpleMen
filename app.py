@@ -141,8 +141,6 @@ def main() -> None:
     components.company_context(state, dark)
     if state.baseline is not None:
         with st.container(border=True):
-            components.backtest_panel(state, dark)
-        with st.container(border=True):
             components.optimization_panel(state, services, request, dark)
             components.selected_strategy_panel(state, services, request)
         with st.container(border=True):
