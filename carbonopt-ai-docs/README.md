@@ -2,7 +2,9 @@
 
 This package turns the agreed single-company CarbonOpt AI technical plan into four independent workstreams with shared contracts and an explicit integration sequence. It is a documentation handoff, not an implemented application.
 
-Start with [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), then read the shared contracts and your assigned workstream. Copy the contents of this folder to the application repository root, retaining the relative directory structure. Every source, configuration, fixture, and command path in the documentation is relative to that root.
+Start with [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), then read the shared contracts and your assigned workstream. Keep these specifications in `carbonopt-ai-docs/`; application source, configuration, data, tests and commands refer to the Git repository root.
+
+For Workstream 3, use [the five four-hour execution prompts](docs/workstreams/03_EXECUTION_PROMPTS_4_HOURS.md) as the only execution checklist. Completed [boundary notes](docs/handoffs/ws3/c0-boundary.md) and [readiness audit](docs/handoffs/ws3/readiness.md) are background evidence, not additional prompts. Boundary proposals remain draft until reviewed.
 
 ## Reading map
 
@@ -19,6 +21,7 @@ Start with [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md), then read the share
 | [Workstream 1](docs/workstreams/01_DATA_ML.md) | Data, ML forecasting, backtesting, SHAP |
 | [Workstream 2](docs/workstreams/02_ACTIONS_OPTIMIZATION.md) | Action engine, optimization, Pareto |
 | [Workstream 3](docs/workstreams/03_RISK_BENCHMARK.md) | Risk, Monte Carlo, external benchmarking/API |
+| [Workstream 3 execution prompts](docs/workstreams/03_EXECUTION_PROMPTS_4_HOURS.md) | Five tasks for the remaining four hours; replaces the retired prompt pack |
 | [Workstream 4](docs/workstreams/04_DASHBOARD_INTEGRATION.md) | Streamlit, Plotly, integration, optional LLM/chatbot |
 | [Decision register](docs/DECISIONS.md) | Frozen assumptions, unresolved implementation choices, change process |
 | [Fixture examples](examples/README.md) | Machine-readable contract examples and their intended use |

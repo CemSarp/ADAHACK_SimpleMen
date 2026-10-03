@@ -4,7 +4,7 @@
 
 CarbonOpt AI is a single-company decision tool built with **Streamlit + Plotly**. Specs live in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md). The WS4 dashboard and integration layer runs today on labelled mock providers; see [the WS4 handoff](docs/handoffs/WS4_DASHBOARD_HANDOFF.md) for status and what depends on WS1-WS3.
 
-For Workstream 3, use [the step-by-step guide](docs/workstream3/README.md), [architectural decisions](docs/workstream3/ARCHITECTURAL_DECISIONS.md), [edge cases](docs/workstream3/EDGE_CASES.md), and [iterative coding-agent prompts](docs/workstream3/AGENT_PROMPTS.md).
+For Workstream 3 execution, use only [the five prompts for the last four hours](carbonopt-ai-docs/docs/workstreams/03_EXECUTION_PROMPTS_4_HOURS.md). Project specifications and supporting WS3 handoffs are kept in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md).
 
 ### Run the dashboard (from the repository root, Python 3.11)
 

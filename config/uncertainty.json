@@ -1,0 +1,93 @@
+{
+  "uncertainty_id": "illustrative-risk-v1",
+  "sampler_version": "uniform-independent-v1",
+  "distribution": "uniform",
+  "correlation": null,
+  "calibration_note": "ILLUSTRATIVE, NOT CALIBRATED. Independent uniform multipliers on parent action assumptions, conditional on the fixed baseline forecast. Bounds are placeholders pending real evidence.",
+  "actions": {
+    "renewable_energy": {
+      "effectiveness": [
+        0.85,
+        1.0
+      ],
+      "capex": [
+        0.9,
+        1.1
+      ],
+      "fixed_opex": [
+        0.9,
+        1.1
+      ]
+    },
+    "ev_adoption": {
+      "effectiveness": [
+        0.85,
+        1.0
+      ],
+      "capex": [
+        0.9,
+        1.1
+      ],
+      "fixed_opex": [
+        0.9,
+        1.1
+      ]
+    },
+    "building_efficiency": {
+      "effectiveness": [
+        0.85,
+        1.0
+      ],
+      "capex": [
+        0.9,
+        1.1
+      ],
+      "fixed_opex": [
+        0.9,
+        1.1
+      ]
+    },
+    "travel_reduction": {
+      "effectiveness": [
+        0.85,
+        1.0
+      ],
+      "capex": [
+        0.9,
+        1.1
+      ],
+      "fixed_opex": [
+        0.9,
+        1.1
+      ]
+    },
+    "cloud_efficiency": {
+      "effectiveness": [
+        0.85,
+        1.0
+      ],
+      "capex": [
+        0.9,
+        1.1
+      ],
+      "fixed_opex": [
+        0.9,
+        1.1
+      ]
+    },
+    "supplier_transition": {
+      "effectiveness": [
+        0.85,
+        1.0
+      ],
+      "capex": [
+        0.9,
+        1.1
+      ],
+      "fixed_opex": [
+        0.9,
+        1.1
+      ]
+    }
+  }
+}
