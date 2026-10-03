@@ -2,7 +2,9 @@
 
 ## Current project plan
 
-Build **CarbonOpt with Django + Plotly**. Start with [the shared team center](docs/team-execution/CENTER.md) and its four role files. The [supporting guides](docs/technical-guide/README.md) now describe this same CarbonOpt plan; the folders are named by purpose: technical guidance and team execution.
+Build **CarbonOpt AI with Python 3.11, Streamlit + Plotly**. Start with [the current developer documentation](carbonopt-ai-docs/README.md) and [the central implementation plan](carbonopt-ai-docs/IMPLEMENTATION_PLAN.md), then read the shared contracts and your workstream. These documents describe implementation targets; the application skeleton is not yet delivered in this checkout.
+
+For Workstream 3, use [the step-by-step guide](docs/workstream3/README.md), [architectural decisions](docs/workstream3/ARCHITECTURAL_DECISIONS.md), [edge cases](docs/workstream3/EDGE_CASES.md), and [iterative coding-agent prompts](docs/workstream3/AGENT_PROMPTS.md).
 
 ## Getting Started
 
