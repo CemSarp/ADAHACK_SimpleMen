@@ -60,7 +60,7 @@ class SimulationFn(Protocol):
 
 `SimulationResult` contains `strategy_id`, `config`, `monthly`, `metrics`, `baseline_id` and common metadata. `OptimizationResult` contains `status`, `baseline_id`, `constraints`, `strategies` (ID → SimulationResult), `candidates` and `pareto` DataFrames, `diagnostics` and metadata. Candidates contain all unique evaluated results retained for audit; Pareto contains feasible nondominated rows only.
 
-`ConstraintEvaluation` contains float `g_budget`, `g_profit`, `g_target`, bool `feasible`, and `raw_violations` with `budget_gbp`, `profit_gbp`, `reduction_ratio` (each max(0, raw violation)). Thresholds and sign conventions are in ACTION_MODEL.md. Config objects serialize as plain field dictionaries inside versioned results; standalone config files are validated against the selected contract version.
+`ConstraintEvaluation` contains float `g_budget`, `g_profit`, `g_target`, bool `feasible`, and `raw_violations` with `budget_gbp`, `profit_gbp`, `reduction_ratio` (each max(0, raw violation)). Additive optional field (1.0.x, pending review): `satisfied` maps `budget`, `profit`, `target` to the per-constraint result of the same normalized-plus-raw test as `feasible`, for UI badges. Thresholds and sign conventions are in ACTION_MODEL.md. Config objects serialize as plain field dictionaries inside versioned results; standalone config files are validated against the selected contract version.
 
 `RiskResult` contains `strategy_id`, `baseline_id`, `summary`, `n_simulations`, `uncertainty_id`, optional `samples`, and metadata. `BenchmarkResult` contains its status, compatible peer statistics and provenance. `BacktestReport` and `ExplanationResult` have their structures defined in the schema document. `ModelBundle` contains target estimators, feature order, training cutoff, residual scope shares, driver policy, metadata and model ID; serialization stores metadata separately from trusted local model binaries.
 
@@ -205,6 +205,10 @@ def execute_tool(
 Services contains forecast, simulator, optimizer, risk, benchmark, SHAP and narrative providers plus capability flags. Optional capability absence yields a disabled panel, not an import error in P0.
 
 Capabilities include `supported_horizons`, `risk_available`, `shap_available_targets`, `benchmark_available`, `narrative_available` and per-provider `is_mock`. Forecast provider binds the trusted model/history/driver policy but returns the public BaselineBundle. Shared consumer code never loads a model artifact directly.
+
+### Chatbot additions (contract 1.x, additive; require producer/consumer review)
+
+`ToolResult(status, tool_name, validated_arguments, data, error)` and `NarrativeResult(status, text, source_run_id, provider, is_template)` are defined in `src/contracts/types.py` with the fields listed in the Tool/Narrative paragraph of DATA_SCHEMAS.md. `status` for tools is `ok`, `error` or `unavailable`; `data` is a plain JSON-safe mapping built from serialized public results. The model-provider boundary (`ChatModelProvider`: `chat(messages, tools) -> ModelResponse`, `check_connection()`) lives in `src/llm/providers.py`, not in contracts, because it is WS4-internal. `execute_tool(name, arguments, *, context, services)` binds `AnalysisContext` on the server side; `explain_analysis(analysis, *, provider=None)` has a deterministic template implementation. No existing field changed. See [docs/CHATBOT_IMPLEMENTATION.md](../../docs/CHATBOT_IMPLEMENTATION.md). Review status: not reviewed by WS1-WS3.
 
 ## 4. Errors and status results
 

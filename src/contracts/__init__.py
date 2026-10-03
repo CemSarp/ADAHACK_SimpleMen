@@ -51,7 +51,9 @@ from .types import (
     RecommendationResult,
     RiskConfig,
     RiskResult,
+    NarrativeResult,
     SimulationResult,
+    ToolResult,
 )
 
 __all__ = [name for name in dir() if not name.startswith("_")]

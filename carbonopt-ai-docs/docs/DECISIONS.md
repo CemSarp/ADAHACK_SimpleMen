@@ -20,14 +20,32 @@ Contract version is `1.0.0`. Names, types, units, action meanings, result status
 | D12 | P0 supports 12 months; 36/60 explicitly unsupported until tested | Avoid implying long-horizon credibility | WS1 + WS4 |
 | D13 | Compact fixtures are illustrative synthetic examples | They validate integration shape, not scientific truth | All four |
 | D14 | Shared schemas and documentation are authoritative | Consumers cannot privately rename fields | All four |
+| D15 | Chat model runs on a separate remote Ollama server, never on developer machines or in this repo | Avoids local weights/infrastructure; the app ships only a configurable client | WS4 + deployment owner |
+| D16 | Model tag is configurable (`OLLAMA_MODEL`), default `llama3.1:8b` (instruction-tuned tag) | Model can change without code changes | WS4 |
+| D17 | Mock chat mode is explicit (`CHATBOT_PROVIDER=mock`), labelled, and never a fallback for a failed remote call | Prevents mock output being mistaken for model output | WS4 |
+| D18 | Chat UI is a floating bottom-left bubble opening a panel inside the Streamlit dashboard | Keeps the assistant available without leaving the dashboard | WS4 |
+| D19 | LLM interprets and explains; allowlisted tools through existing services compute; chat what-if is a preview applied by an explicit button | Preserves single-simulator and ownership boundaries | WS2 + WS4 |
 
 ## Decisions to resolve during implementation
 
-These do not block C0 contracts: compatible package pins, precise LightGBM hyperparameters, real benchmark provider and dataset licence, source emission factors, calibrated action capex/effect coefficients, final sample budgets, and optional LLM provider.
+These do not block C0 contracts: compatible package pins, precise LightGBM hyperparameters, real benchmark provider and dataset licence, source emission factors, calibrated action capex/effect coefficients, final sample budgets, and the deployed Ollama endpoint, gateway authentication and hardware sizing (the provider decision itself is D15-D19).
 
 For each, record the selected value, evidence, reviewer, configuration ID, and affected fixture revision in the relevant configuration or provenance artifact. Illustrative default values are sufficient for synthetic demonstrations when labelled. Never claim they are calibrated company economics.
 
 Real company selection is outside the initial package scope. If annual company data is introduced, preserve reported frequency and label any interpolation; generated monthly observations are not independent reported measurements.
+
+## Pending change requests (WS2–WS4 integration)
+
+Made while merging WS4's contract package into `workstream2`; each is pinned by `tests/contracts/test_shared_contract_changes.py` and listed in `docs/handoffs/WS2_HANDOFF.md` §5. They are additive or stricter validation within 1.0.x and await the listed approvals.
+
+| ID | Change | Approvers |
+|---|---|---|
+| R01 | `ConstraintEvaluation.satisfied` and `RecommendationResult.diagnostics` additive optional fields | WS2 + WS3 + WS4 |
+| R02 | `pareto_rank = 1` marks feasible but dominated candidates | WS2 + WS4 |
+| R03 | Assumption files reject unknown fields, booleans as numbers and non-integral `asset_life_months` | WS2 + WS3 + WS4 |
+| R04 | `target_probability_mc_standard_error` null exactly when `target_probability` is null | WS3 + WS4 |
+| R05 | Optimizer seeds must be nonnegative; strategy identity maps `-0.0` to `0.0` | WS2 + WS4 |
+| R06 | `pymoo==0.6.2` joins the locked P0 requirements (imported lazily) | WS2 + WS4 |
 
 ## Contract change workflow
 

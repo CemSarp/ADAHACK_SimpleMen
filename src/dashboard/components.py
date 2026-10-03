@@ -44,7 +44,16 @@ KIND_LABELS = {"fixture": "fixture", "behavioral-mock": "behavioral mock", "real
 
 def provenance_banner(services: Services) -> None:
     mocked = [(slot, info) for slot, info in services.providers.items() if info.is_mock]
-    if mocked:
+    real = [slot for slot, info in services.providers.items() if not info.is_mock]
+    if mocked and real:
+        parts = ", ".join(f"**{slot}** ({KIND_LABELS.get(info.kind, info.kind)})" for slot, info in mocked)
+        st.warning(
+            f"**PARTIALLY MOCKED — {services.mode} mode.** Real providers: {', '.join(f'**{s}**' for s in real)}. "
+            f"Mocked: {parts}. Every result depends on the mocked inputs, so the analysis as a whole is not real; "
+            "this is not the accepted all-real C4 MVP.",
+            icon="⚠️",
+        )
+    elif mocked:
         parts = ", ".join(f"**{slot}** ({KIND_LABELS.get(info.kind, info.kind)})" for slot, info in mocked)
         st.warning(
             f"**MOCK OUTPUT — {services.mode} mode.** These results come from development doubles, "
@@ -54,10 +63,23 @@ def provenance_banner(services: Services) -> None:
         )
     else:
         st.success(f"All bound providers are real ({services.mode} mode).", icon="✅")
+    st.caption(services.provenance_summary())
 
 
 def mock_tag(is_mock: bool) -> str:
     return " · :orange-badge[MOCK]" if is_mock else ""
+
+
+def constraint_failures(check: Any) -> list[str]:
+    """Labels of the constraints the provider's evaluation failed. Uses the per-constraint
+    `satisfied` flags when the optimizer provider supplies them (WS2), otherwise falls back
+    to positive raw violations (fixture/behavioral doubles)."""
+    labels = (("budget", "budget_gbp", "budget"), ("profit", "profit_gbp", "profit floor"),
+              ("target", "reduction_ratio", "CO₂ target"))
+    satisfied = getattr(check, "satisfied", None) or {}
+    if satisfied:
+        return [label for flag, _, label in labels if not satisfied.get(flag, True)]
+    return [label for _, raw, label in labels if check.raw_violations.get(raw, 0) > 0]
 
 
 def error_box(kind: str, error_type: str, message: str) -> None:
@@ -375,8 +397,7 @@ def whatif_panel(state: DashboardState, services: Services, request: AnalysisReq
         if check.feasible:
             st.success("Meets the current budget, profit floor and CO₂ target (shared constraint evaluation).", icon="✅")
         else:
-            failed = [label for key, label in (("budget_gbp", "budget"), ("profit_gbp", "profit floor"),
-                                                ("reduction_ratio", "CO₂ target")) if check.raw_violations.get(key, 0) > 0]
+            failed = constraint_failures(check)
             st.warning("Does not meet: " + ", ".join(failed or ["constraint tolerance"]) + ".", icon="⚠️")
     if selected is not None and result.strategy_id == selected.strategy_id:
         same = all(result.metrics[k] == selected.metrics[k] for k in selected.metrics)

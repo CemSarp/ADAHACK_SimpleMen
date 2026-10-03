@@ -177,7 +177,7 @@ Candidates and Pareto use the same schema:
 | `co2_reduction_ratio` | float or nullable if baseline zero |
 | `g_budget`, `g_profit`, `g_target` | Dimensionless constraint values; ≤ tolerance feasible |
 | `feasible` | bool |
-| `pareto_rank` | int; 0 for feasible nondominated points, −1 for infeasible |
+| `pareto_rank` | int; 0 for feasible nondominated points, −1 for infeasible; the WS2 optimizer uses 1 for feasible but dominated candidates (pending review) |
 
 Empty frames retain columns and dtypes. `status="ok"` requires at least one feasible Pareto point. `status="infeasible"` has an empty Pareto and a null recommendation. This means no feasible candidate was found within the search budget, not a mathematical proof of global infeasibility.
 
@@ -195,10 +195,10 @@ SHAP explanation columns: `timestamp`, `target`, `feature`, `feature_value`, `sh
 
 Risk summary fields: `co2_mean_tco2e`, `co2_p05_tco2e`, `co2_p95_tco2e`, `profit_mean_gbp`, `profit_p05_gbp`, `profit_p95_gbp`, `cost_mean_gbp`, `cost_p95_gbp`, `target_probability`, `profit_floor_probability`, `budget_probability`, `joint_feasibility_probability`, and `target_probability_mc_standard_error`. Quantile levels are empirical; p05/p95 is a 90% trial outcome interval, not a confidence interval on the mean.
 
-Optional risk samples columns: `trial_id`, `total_co2e_tco2e`, `total_profit_gbp`, `total_cost_gbp`, `target_met`, `profit_met`, `budget_met`. Trial flags use raw constraint boundaries. Nullable summary probabilities are only permitted for undefined ratios; no zero-filled errors.
+Optional risk samples columns: `trial_id`, `total_co2e_tco2e`, `total_profit_gbp`, `total_cost_gbp`, `target_met`, `profit_met`, `budget_met`. Trial flags use raw constraint boundaries. Nullable summary probabilities are only permitted for undefined ratios; no zero-filled errors. `target_probability_mc_standard_error` is null exactly when `target_probability` is null.
 
 Benchmark peer columns and result semantics are defined in [RISK_AND_BENCHMARK_SPEC.md](RISK_AND_BENCHMARK_SPEC.md). Result status is `ok` or `unavailable`. Benchmark fields are `company_intensity_tco2e_per_million_gbp`, `industry_median`, `percentile`, `better_than_pct`, `peer_count`, `source_id`, `source_url` (nullable), `retrieved_at`, `snapshot_id`, `is_synthetic`, `period_start`, `period_end`, `scope_coverage`, `scope2_method`, `comparison_basis`, and `reason` (nullable).
 
-Recommendation fields: nullable `strategy_id`, `policy`, `tolerance`, `score`, `risk_status`, and `reason`. Unavailable risk produces `risk_status="unavailable"` and the deterministic fallback policy; it never claims conservative selection.
+Recommendation fields: nullable `strategy_id`, `policy`, `tolerance`, `score`, `risk_status`, and `reason`, plus the additive optional `diagnostics` object (selection pool, risk coverage, thresholds and shortfall; pending review). Unavailable risk produces `risk_status="unavailable"` and the deterministic fallback policy; it never claims conservative selection.
 
 Narrative fields: `status`, `text`, `source_run_id`, `provider`, `is_template`. Tool results: `status`, `tool_name`, `validated_arguments`, `data` (serialized public result or null), and `error` (nullable).

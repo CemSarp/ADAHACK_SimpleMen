@@ -2,9 +2,11 @@
 
 Run from the repository root:  python -m streamlit run app.py
 
-Provider mode defaults to `mock` (development doubles, visibly labelled). Set
-CARBONOPT_PROVIDER_MODE=real once WS1-WS3 providers exist, or choose a mode in
-the sidebar. Real mode never falls back to mock output.
+Provider mode defaults to `mock` (development doubles, visibly labelled). The WS2
+integration setup is `CARBONOPT_PROVIDER_MODE=hybrid`, whose default preset binds the
+labelled fixture forecast with the real WS2 simulator/optimizer (see
+src/integration/services.py HYBRID_PRESETS). `real` requires every P0 provider, so it
+reports the missing WS1 forecast until WS1 lands. Real mode never falls back to mock output.
 """
 
 from __future__ import annotations
@@ -16,11 +18,25 @@ import streamlit as st
 from src.contracts.errors import ProviderConfigurationError
 from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig
 from src.dashboard import components
+from src.dashboard.chat_ui import render_chat
 from src.dashboard.state import DashboardState
-from src.integration.services import OPTIONAL_SLOTS, P0_SLOTS, Services, create_services
+from src.integration.services import (
+    DEFAULT_HYBRID_PRESET,
+    HYBRID_PRESETS,
+    OPTIONAL_SLOTS,
+    P0_SLOTS,
+    Services,
+    create_services,
+    preset_overrides,
+)
 
 MODES = ("mock", "real", "hybrid")
 DEFAULT_COMPANY_ID = os.environ.get("CARBONOPT_COMPANY_ID", "demo-company")
+CUSTOM_PRESET = "custom"
+PRESET_LABELS = {
+    "fixture-forecast-real-ws2": "Fixture forecast + real WS2 (integration)",
+    CUSTOM_PRESET: "Custom: choose each provider",
+}
 
 
 @st.cache_resource(show_spinner=False)
@@ -40,10 +56,19 @@ def sidebar_providers() -> tuple[str, tuple[tuple[str, str], ...]]:
     st.sidebar.markdown("### Providers")
     mode = st.sidebar.selectbox(
         "Provider mode", MODES, index=MODES.index(env_mode) if env_mode in MODES else 0, key="co_widget_mode",
-        help="mock: development doubles. real: WS1–WS3 implementations only. hybrid: choose per provider.",
+        help="mock: development doubles. real: WS1–WS3 implementations only. hybrid: a named mix, by default the "
+             "labelled fixture forecast with the real WS2 simulator and optimizer.",
     )
     overrides: list[tuple[str, str]] = []
     if mode == "hybrid":
+        presets = [*HYBRID_PRESETS, CUSTOM_PRESET]
+        env_preset = os.environ.get("CARBONOPT_HYBRID_PRESET", DEFAULT_HYBRID_PRESET)
+        preset = st.sidebar.selectbox(
+            "Hybrid configuration", presets, index=presets.index(env_preset) if env_preset in presets else 0,
+            format_func=lambda name: PRESET_LABELS.get(name, name), key="co_widget_preset",
+        )
+        if preset != CUSTOM_PRESET:
+            return mode, tuple(sorted(preset_overrides(preset).items()))
         for slot in P0_SLOTS + OPTIONAL_SLOTS[:-1]:
             choices = ["mock", "real"] + (["disabled"] if slot in OPTIONAL_SLOTS else [])
             overrides.append((slot, st.sidebar.selectbox(f"{slot} provider", choices, key=f"co_widget_hybrid_{slot}")))
@@ -116,8 +141,9 @@ def main() -> None:
         services = _services(mode, overrides)
     except ProviderConfigurationError as exc:
         st.error(f"**Provider configuration error.** {exc}", icon="🛑")
-        st.info("Real mode requires the WS1 forecast, WS2 simulator and WS2 optimizer providers. Select **mock** "
-                "for development, or **hybrid** to choose providers individually.")
+        st.info("Real mode needs every P0 provider (WS1 forecast, WS2 simulator and optimizer) and never substitutes a "
+                "fixture. To run the real WS2 engine now, select **hybrid** → *Fixture forecast + real WS2*; select "
+                "**mock** for development doubles.")
         st.stop()
 
     state = DashboardState(st.session_state)
@@ -133,20 +159,22 @@ def main() -> None:
     dark = _is_dark()
     components.provenance_banner(services)
     components.company_context(state, dark)
-    if state.baseline is None:
-        st.stop()
-    components.backtest_panel(state, dark)
-    st.divider()
-    components.optimization_panel(state, services, request, dark)
-    components.selected_strategy_panel(state, services, request)
-    st.divider()
-    components.whatif_panel(state, services, request)
-    components.monthly_panel(state, dark)
-    st.divider()
-    components.optional_panels(state, services, request, dark)
-    st.divider()
-    components.assumptions_panel(services.assumptions, services.providers["simulator"].is_mock)
-    components.provenance_details(state, services)
+    if state.baseline is not None:
+        components.backtest_panel(state, dark)
+        st.divider()
+        components.optimization_panel(state, services, request, dark)
+        components.selected_strategy_panel(state, services, request)
+        st.divider()
+        components.whatif_panel(state, services, request)
+        components.monthly_panel(state, dark)
+        st.divider()
+        components.optional_panels(state, services, request, dark)
+        st.divider()
+        components.assumptions_panel(services.assumptions, services.providers["simulator"].is_mock)
+        components.provenance_details(state, services)
+    # Reserve room so the floating bubble never covers the Optimize button.
+    st.sidebar.html('<div style="height:88px"></div>')
+    render_chat(state, services, request, dark=dark)
 
 
 main()

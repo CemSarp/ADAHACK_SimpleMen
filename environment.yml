@@ -15,6 +15,9 @@ dependencies:
   # Machine learning & stats
   - scikit-learn
   - statsmodels
+  - xgboost
+  - lightgbm
+  - prophet
   # Notebooks
   - jupyterlab
   - ipykernel
@@ -22,3 +25,10 @@ dependencies:
   - requests
   - python-dotenv
   - tqdm
+  # Tests
+  - pytest
+  - pip:
+      # The locked app/test set is requirements.txt; these keep the conda route runnable.
+      # WS2 multi-objective optimization; 0.6.2+ seeds a local Generator, never the global NumPy RNG
+      - pymoo>=0.6.2
+      - streamlit

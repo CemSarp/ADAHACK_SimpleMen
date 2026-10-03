@@ -59,11 +59,24 @@ Show risk interval labels as empirical trial outcomes and disclose conditional u
 
 When the target threshold is unmet probabilistically, show that status; do not color it as guaranteed success. Risk tolerance may legitimately select the same plan for multiple settings.
 
+## Chatbot responsibilities and acceptance (P2)
+
+Plan: [docs/CHATBOT_IMPLEMENTATION.md](../../../docs/CHATBOT_IMPLEMENTATION.md). WS4 owns the floating assistant (`src/dashboard/chat_ui.py`, `chat_state.py`), the provider abstraction and tools (`src/llm/`), and the configuration. The model runs on a separate Ollama server (`llama3.1:8b`); WS4 delivers only the configurable client.
+
+Acceptance criteria:
+- Circular bottom-left bubble opens a compact panel; conversation persists across close/reopen; Clear resets chat only.
+- Every request is bound to the application-built analysis context; the model cannot choose company, baseline, provider or endpoint.
+- Only the four allowlisted tools run, with validated arguments, at most 3 executions per user message, bounded evaluations/trials, no duplicate dispatch on retry.
+- Final adoption share versus fraction of remaining opportunity is explicit; ambiguous percentages trigger a clarification; chat what-if is a preview applied only by an explicit button.
+- Result cards come from serialized backend output; cards from an earlier analysis context are marked stale.
+- Mock model and mock backends are visibly labelled; remote failures are visible errors, never mock fallback.
+- Offline tests pass; the live remote smoke test is opt-in and reported as not run unless an endpoint was used.
+
 ## P2 boundaries
 
 Explanation consumes serialized verified results and never creates missing metrics. Use a deterministic template fallback without a network dependency.
 
-Chat allowlist: `get_baseline`, `simulate_strategy`, `optimize_strategies`, `get_risk_summary`. Bind company/baseline context on the server-side service layer, validate all tool arguments against the same schemas, cap optimization evaluations/trials, and limit tool calls per message (default 3).
+Chat allowlist (implemented in `src/llm/tools.py`): `get_baseline`, `simulate_strategy`, `optimize_strategies`, `get_risk_summary`. Bind company/baseline context on the server-side service layer, validate all tool arguments against the same schemas, cap optimization evaluations/trials, and limit tool calls per message (default 3).
 
 Examples: “EV adoption to 80%” is ambiguous between final EV share and implementation fraction; the tool schema distinguishes them. For final target share `v_target`, compute `x=(v_target-v)/(1-v)` with validation, and confirm the interpreted action in the response. Requests below current share are unsupported under P0 adoption-only actions.
 

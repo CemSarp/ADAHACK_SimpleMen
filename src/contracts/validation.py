@@ -285,8 +285,12 @@ def validate_constraints_for_baseline(c: ConstraintConfig, baseline: BaselineBun
 
 
 def validate_optimizer_config(c: OptimizerConfig) -> OptimizerConfig:
-    if isinstance(c.seed, bool) or not isinstance(c.seed, int):
+    if not isinstance(c, OptimizerConfig):
+        _fail("optimizer_config", "must be an OptimizerConfig")
+    if isinstance(c.seed, bool) or not isinstance(c.seed, (int, np.integer)):
         _fail("optimizer_config.seed", "must be an int")
+    if c.seed < 0:
+        _fail("optimizer_config.seed", "must be >= 0 (NumPy/pymoo seeds are nonnegative)")
     require_positive_int("optimizer_config.population_size", c.population_size)
     require_positive_int("optimizer_config.generations", c.generations)
     require_positive_int("optimizer_config.max_evaluations", c.max_evaluations)
@@ -471,7 +475,10 @@ def validate_risk_result(r: RiskResult) -> RiskResult:
             _fail(f"risk.summary.{name}", "is required")
         value = r.summary[name]
         if value is None:
-            if not name.endswith("probability"):
+            # Only probabilities tied to an undefined ratio may be null, and the target
+            # probability's standard error with it (no zero-filled errors, DATA_SCHEMAS.md s9).
+            se_of_undefined_target = name == "target_probability_mc_standard_error" and r.summary["target_probability"] is None
+            if not (name.endswith("probability") or se_of_undefined_target):
                 _fail(f"risk.summary.{name}", "must not be null")
             continue
         v = require_finite(f"risk.summary.{name}", value)
