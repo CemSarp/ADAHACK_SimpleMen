@@ -128,9 +128,29 @@ def main() -> None:
 
     state = DashboardState(st.session_state)
     state.sync_services(services)
+    baseline_summary = st.sidebar.container()
     request = sidebar_inputs(services)
     with st.spinner("Preparing your forecast. The first analysis may take a few minutes…"):
         state.ensure_baseline(request, services)
+    with baseline_summary:
+        st.markdown("**Baseline · before new actions**")
+        if state.baseline is not None:
+            monthly = state.baseline.monthly
+            st.caption(f"{monthly['timestamp'].min():%b %Y} – {monthly['timestamp'].max():%b %Y}")
+            st.markdown(
+                "| Forecast | Total |\n| :--- | ---: |\n"
+                f"| Emissions | **{monthly['total_co2e_tco2e'].sum():,.0f} tCO₂e** |\n"
+                f"| Revenue | **£{monthly['revenue_gbp'].sum() / 1_000_000:,.2f}m** |\n"
+                f"| Profit (EBITDA proxy) | **£{monthly['operating_profit_gbp'].sum() / 1_000_000:,.2f}m** |"
+            )
+            with st.expander("Data source"):
+                st.caption(f"Source: {services.forecast.config.input_csv}. "
+                           f"Data type: {state.baseline.data_kind}. Emissions and profit are model forecasts; "
+                           "revenue follows the configured seasonal growth projection. "
+                           "Profit uses EBITDA as a proxy. EUR values are converted using the configured "
+                           "illustrative exchange rate. These figures are separate from the Wincanton reference.")
+        else:
+            st.caption("Baseline figures are unavailable until the forecast loads.")
     state.sync_inputs(request, services)
     optimize = st.sidebar.button("Optimize", type="primary", width="stretch", disabled=state.baseline is None)
     if optimize:
