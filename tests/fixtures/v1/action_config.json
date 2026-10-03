@@ -1,0 +1,8 @@
+{
+  "renewable_energy": 0.7,
+  "ev_adoption": 0.4,
+  "building_efficiency": 0.2,
+  "travel_reduction": 0.3,
+  "cloud_efficiency": 0.25,
+  "supplier_transition": 0.1
+}

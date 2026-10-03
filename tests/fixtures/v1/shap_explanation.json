@@ -1,0 +1,888 @@
+{
+  "schema_version": "1.0.0",
+  "run_id": "fixture-shap-run",
+  "provenance": {
+    "provider": "fixture",
+    "is_mock": true,
+    "seed": 42,
+    "input_hash": "c0-fixtures-r1",
+    "config_id": "demo-v1",
+    "assumptions_id": null
+  },
+  "model_id": "fixture-model-v1",
+  "baseline_id": "baseline-demo-v1",
+  "driver_policy_id": "flat-demo-v1",
+  "output_space": "raw_model",
+  "units": {
+    "total_co2e_tco2e": "tCO2e",
+    "operating_profit_gbp": "GBP"
+  },
+  "explained_rows": 12,
+  "contributions": [
+    {
+      "timestamp": "2027-01-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-01-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 104.87004300000001,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-01-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": 0.0,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-01-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-01-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-01-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 101883.71,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-01-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": 0.0,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-01-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 105.862011,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": 0.49999999999999994,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 104203.01,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": 0.49999999999999994,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-02-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 105.24747099999999,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": 0.8660254037844386,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 102517.68,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": 0.8660254037844386,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-03-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 102.67856599999999,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": 1.0,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 102797.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": 1.0,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-04-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 99.35666,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": 0.8660254037844387,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 99756.06,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": 0.8660254037844387,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-05-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 95.202763,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": 0.49999999999999994,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 97841.08,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": 0.49999999999999994,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-06-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 94.105488,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": 1.2246467991473532e-16,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 94379.32,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": 1.2246467991473532e-16,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-07-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 92.885658,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": -0.4999999999999998,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 91307.69,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": -0.4999999999999998,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-08-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 93.670162,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": -0.8660254037844384,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 91470.86,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": -0.8660254037844384,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-09-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 96.473193,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": -1.0,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 96772.58,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": -1.0,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-10-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 99.547688,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": -0.8660254037844386,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 98360.38,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": -0.8660254037844386,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-11-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_1",
+      "feature_value": 103.034145,
+      "shap_value": 2.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "total_co2e_tco2e",
+      "feature": "total_co2e_lag_12",
+      "feature_value": 103.034145,
+      "shap_value": 1.25,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "total_co2e_tco2e",
+      "feature": "month_sin",
+      "feature_value": -0.5000000000000004,
+      "shap_value": 0.5,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "total_co2e_tco2e",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 1.0,
+      "base_value": 95.0,
+      "model_prediction": 100.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_1",
+      "feature_value": 100309.02,
+      "shap_value": 1000.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "operating_profit_gbp",
+      "feature": "operating_profit_lag_12",
+      "feature_value": 100309.02,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "operating_profit_gbp",
+      "feature": "month_sin",
+      "feature_value": -0.5000000000000004,
+      "shap_value": 200.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    },
+    {
+      "timestamp": "2027-12-01",
+      "target": "operating_profit_gbp",
+      "feature": "revenue_gbp_projected",
+      "feature_value": 1000000.0,
+      "shap_value": 400.0,
+      "base_value": 98000.0,
+      "model_prediction": 100000.0
+    }
+  ],
+  "fixture_note": "Illustrative contributions for panel layout; not a SHAP computation."
+}
