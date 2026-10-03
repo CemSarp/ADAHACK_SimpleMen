@@ -1,0 +1,12 @@
+[project]
+name = "carbonopt-ai"
+version = "0.1.0"
+description = "Single-company carbon/profit decision support (CarbonOpt AI)."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+markers = [
+    "p1: optional P1 capability tests (risk, SHAP, benchmark)",
+]

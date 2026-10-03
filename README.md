@@ -2,7 +2,18 @@
 
 ## Current project plan
 
-Build **CarbonOpt with Django + Plotly**. Start with [the shared team center](docs/team-execution/CENTER.md) and its four role files. The [supporting guides](docs/technical-guide/README.md) now describe this same CarbonOpt plan; the folders are named by purpose: technical guidance and team execution.
+CarbonOpt AI is a single-company decision tool built with **Streamlit + Plotly**. Specs live in [carbonopt-ai-docs/](carbonopt-ai-docs/README.md). The WS4 dashboard and integration layer runs today on labelled mock providers; see [the WS4 handoff](docs/handoffs/WS4_DASHBOARD_HANDOFF.md) for status and what depends on WS1-WS3.
+
+### Run the dashboard (from the repository root, Python 3.11)
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pytest
+.venv/bin/python -m streamlit run app.py
+```
+
+Mock output is visibly labelled. `CARBONOPT_PROVIDER_MODE=real` fails with a clear error until the real providers exist.
 
 ## Getting Started
 

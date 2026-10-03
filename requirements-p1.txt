@@ -1,0 +1,7 @@
+# P1 optional capabilities (risk, SHAP, external benchmark).
+# Not required for P0 startup; providers advertise the capability as unavailable
+# when these are missing. Owners pin exact versions after a clean install check.
+-r requirements.txt
+# shap        # WS1, forecast explanation
+# scipy       # WS3, only if required by Monte Carlo
+# requests    # WS3, external benchmark adapter

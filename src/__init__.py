@@ -1,0 +1,1 @@
+"""CarbonOpt AI application package."""
