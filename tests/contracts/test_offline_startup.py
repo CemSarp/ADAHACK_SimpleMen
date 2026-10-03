@@ -87,6 +87,8 @@ def test_streamlit_app_starts_offline_in_mock_mode():
 
 
 def test_real_mode_reports_missing_p0_providers_without_crashing_the_app():
+    # The guard blocks pymoo, so this checks both missing-provider reasons: WS1's forecast
+    # module does not exist, and WS2's optimizer cannot load its solver dependency.
     proc = _run(
         """
         import os
@@ -95,8 +97,9 @@ def test_real_mode_reports_missing_p0_providers_without_crashing_the_app():
         at = AppTest.from_file("app.py", default_timeout=120).run()
         assert not at.exception, [e.message for e in at.exception]
         errors = [e.value for e in at.error]
-        assert any("Provider configuration error" in e and "simulator" in e for e in errors), errors
-        assert not any("MOCK OUTPUT" in w.value for w in at.warning)
+        assert any("Provider configuration error" in e and "forecast" in e for e in errors), errors
+        assert any("missing dependency: pymoo" in e for e in errors), errors
+        assert not any("MOCK OUTPUT" in w.value or "PARTIALLY MOCKED" in w.value for w in at.warning)
         print("ok")
         """
     )

@@ -56,6 +56,44 @@ MOCK_VARIANT_NAMES: tuple[str, ...] = ("mock", "fixture", "behavioral")
 
 Mode = Literal["mock", "real", "hybrid"]
 
+#: Named hybrid configurations. "fixture-forecast-real-ws2" is the documented integration
+#: setup while WS1 is unavailable: labelled fixture baseline, real WS2 simulator, constraints,
+#: optimizer and recommendation. Risk/benchmark ask for real providers, so they stay
+#: disabled (with the reason) until WS3 publishes them and then bind without code changes.
+#: SHAP is disabled because a fixture baseline has no trained model to explain.
+HYBRID_PRESETS: Mapping[str, Mapping[str, str]] = {
+    "fixture-forecast-real-ws2": {
+        "forecast": "fixture",
+        "simulator": "real",
+        "optimizer": "real",
+        "risk": "real",
+        "shap": "disabled",
+        "benchmark": "real",
+    },
+}
+DEFAULT_HYBRID_PRESET = "fixture-forecast-real-ws2"
+
+#: Human-readable owner/kind labels for the provenance line ("Baseline: fixture · Simulator: WS2 ...").
+SLOT_LABELS: Mapping[str, str] = {
+    "forecast": "Baseline",
+    "simulator": "Simulator",
+    "optimizer": "Optimizer",
+    "risk": "Risk",
+    "shap": "SHAP",
+    "benchmark": "Benchmark",
+}
+REAL_OWNERS: Mapping[str, str] = {
+    "forecast": "WS1", "simulator": "WS2", "optimizer": "WS2", "risk": "WS3", "shap": "WS1", "benchmark": "WS3",
+}
+
+
+def preset_overrides(name: str) -> dict[str, str]:
+    """Provider overrides for a named hybrid preset."""
+    try:
+        return dict(HYBRID_PRESETS[name])
+    except KeyError:
+        raise ProviderConfigurationError(f"unknown hybrid preset {name!r}; known: {sorted(HYBRID_PRESETS)}") from None
+
 
 @dataclass(frozen=True, eq=False)
 class Services:
@@ -79,6 +117,20 @@ class Services:
     @property
     def mocked_slots(self) -> tuple[str, ...]:
         return tuple(slot for slot, info in self.providers.items() if info.is_mock)
+
+    def provenance_summary(self) -> str:
+        """One line naming every provider's source, e.g.
+        "Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: unavailable · ..."."""
+        parts = []
+        for slot, label in SLOT_LABELS.items():
+            info = self.providers.get(slot)
+            if info is None:
+                parts.append(f"{label}: unavailable")
+            elif info.is_mock:
+                parts.append(f"{label}: {'fixture' if info.kind == 'fixture' else 'mock (' + info.kind + ')'}")
+            else:
+                parts.append(f"{label}: {REAL_OWNERS.get(slot, 'real') if info.kind == 'real' else info.kind}")
+        return " · ".join(parts)
 
     def simulate(self, baseline: BaselineBundle, config: ActionConfig) -> SimulationResult:
         """Manual what-if: the bound simulator, called directly (no training/optimization)."""

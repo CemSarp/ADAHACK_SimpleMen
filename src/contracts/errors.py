@@ -19,6 +19,9 @@ class ContractValidationError(CarbonOptError, ValueError):
         self.reason = reason
         super().__init__(f"{field}: {reason}")
 
+    def __reduce__(self):  # picklable despite the two-argument constructor
+        return (type(self), (self.field, self.reason))
+
 
 class UnsupportedHorizon(CarbonOptError, ValueError):
     """Requested horizon is not advertised by the forecast provider."""
@@ -30,6 +33,9 @@ class UnsupportedHorizon(CarbonOptError, ValueError):
             f"horizon_months={horizon_months} is not supported; "
             f"supported horizons: {list(self.supported)}"
         )
+
+    def __reduce__(self):
+        return (type(self), (self.horizon_months, self.supported))
 
 
 class ProviderError(CarbonOptError, RuntimeError):

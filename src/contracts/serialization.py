@@ -267,27 +267,59 @@ def assumptions_to_dict(a: ActionAssumptions) -> dict[str, Any]:
     return out
 
 
+_ASSUMPTION_FIELDS = tuple(f.name for f in fields(ActionAssumptions))
+_COST_FIELDS = ("capex_at_full_gbp", "monthly_opex_at_full_gbp", "asset_life_months")
+
+
+def _number(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ContractValidationError(field, f"must be a number, got {type(value).__name__}")
+    return float(value)
+
+
+def _whole_months(value: Any, field: str) -> int:
+    number = _number(value, field)
+    if not number.is_integer():
+        raise ContractValidationError(field, f"must be a whole number of months, got {value!r}")
+    return int(number)
+
+
+def _reject_unknown(data: Mapping[str, Any], allowed: tuple[str, ...], field: str) -> None:
+    # Versioned config files are strict: a misspelled field must not be ignored.
+    unknown = sorted(set(data) - set(allowed))
+    if unknown:
+        raise ContractValidationError(field, f"unknown fields {unknown}")
+
+
 def assumptions_from_dict(data: Mapping[str, Any], field: str = "assumptions") -> ActionAssumptions:
+    if not isinstance(data, Mapping):
+        raise ContractValidationError(field, "must be a JSON object")
+    _reject_unknown(data, _ASSUMPTION_FIELDS, field)
     kwargs: dict[str, Any] = {}
     for f in fields(ActionAssumptions):
         if f.name == "costs":
             continue
         value = _require(data, f.name, field)
-        if f.name in ("assumptions_id", "version", "description"):
-            kwargs[f.name] = value
-        elif f.name == "is_calibrated":
+        if f.name in ("assumptions_id", "version", "description", "is_calibrated"):
             kwargs[f.name] = value
         else:
-            kwargs[f.name] = float(value)
+            kwargs[f.name] = _number(value, f"{field}.{f.name}")
     costs_raw = _require(data, "costs", field)
-    kwargs["costs"] = {
-        name: ActionCost(
-            capex_at_full_gbp=float(_require(c, "capex_at_full_gbp", f"{field}.costs.{name}")),
-            monthly_opex_at_full_gbp=float(_require(c, "monthly_opex_at_full_gbp", f"{field}.costs.{name}")),
-            asset_life_months=int(_require(c, "asset_life_months", f"{field}.costs.{name}")),
+    if not isinstance(costs_raw, Mapping):
+        raise ContractValidationError(f"{field}.costs", "must be a JSON object keyed by action")
+    _reject_unknown(costs_raw, ACTION_NAMES, f"{field}.costs")
+    costs = {}
+    for name, c in costs_raw.items():
+        path = f"{field}.costs.{name}"
+        if not isinstance(c, Mapping):
+            raise ContractValidationError(path, "must be a JSON object")
+        _reject_unknown(c, _COST_FIELDS, path)
+        costs[name] = ActionCost(
+            capex_at_full_gbp=_number(_require(c, "capex_at_full_gbp", path), f"{path}.capex_at_full_gbp"),
+            monthly_opex_at_full_gbp=_number(_require(c, "monthly_opex_at_full_gbp", path), f"{path}.monthly_opex_at_full_gbp"),
+            asset_life_months=_whole_months(_require(c, "asset_life_months", path), f"{path}.asset_life_months"),
         )
-        for name, c in costs_raw.items()
-    }
+    kwargs["costs"] = costs
     return ActionAssumptions(**kwargs)
 
 
@@ -393,6 +425,7 @@ def optimization_from_dict(data: Mapping[str, Any]) -> OptimizationResult:
 def recommendation_to_dict(r: RecommendationResult) -> dict[str, Any]:
     out = _common_to_dict(r)
     out.update({k: _plain(getattr(r, k)) for k in ("strategy_id", "policy", "tolerance", "score", "risk_status", "reason")})
+    out["diagnostics"] = _json_safe(r.diagnostics)
     return out
 
 
@@ -407,6 +440,7 @@ def recommendation_from_dict(data: Mapping[str, Any]) -> RecommendationResult:
         score=None if score is None else float(score),
         risk_status=_require(data, "risk_status", f),
         reason=_require(data, "reason", f),
+        diagnostics=dict(data.get("diagnostics") or {}),  # additive optional field
     )
 
 
