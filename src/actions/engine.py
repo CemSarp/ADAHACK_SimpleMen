@@ -20,20 +20,26 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.actions.definitions import compute_strategy_id
+from src.actions.definitions import (
+    assumptions_fingerprint,
+    baseline_fingerprint,
+    canonical_config,
+    compute_strategy_id,
+)
 from src.contracts import (
+    ACTION_NAMES,
     SCHEMA_VERSION,
     ActionAssumptions,
     ActionConfig,
     BaselineBundle,
     ContractValidationError,
     Provenance,
-    SimulationMetrics,
     SimulationResult,
 )
-from src.contracts.serialization import assumptions_fingerprint, baseline_fingerprint, canonical_json, sha256_hex
-from src.contracts.validation import validate_action_assumptions, validate_action_config, validate_baseline_bundle
+from src.contracts import validation as val
+from src.contracts.identity import canonical_hash
 
+__version__ = "ws2-engine-1.1.0"  # bump whenever outputs for the same inputs can change
 PROVIDER = "action-engine"
 
 _BASELINE_FIELDS = (
@@ -120,7 +126,7 @@ class _Outcome:
 
 
 def _transform(b: _Baseline, config: ActionConfig, a: ActionAssumptions) -> _Outcome:
-    x_renewable, x_ev, x_building, x_travel, x_cloud, x_supplier = config.to_tuple()
+    x_renewable, x_ev, x_building, x_travel, x_cloud, x_supplier = config.as_vector()
     n = b.revenue.shape[0]
 
     renewable_fraction = x_renewable * a.renewable_effectiveness
@@ -170,8 +176,8 @@ def _transform(b: _Baseline, config: ActionConfig, a: ActionAssumptions) -> _Out
     total = np.maximum(b.total + ((scope1 - b.scope1) + (scope2 - b.scope2) + (scope3 - b.scope3)), 0.0)
 
     # 6. Accounting (ACTION_MODEL.md §4): capex is cash in month 1; depreciation hits profit.
-    action_values = config.to_tuple()
-    costs = [cost for _, cost in a.costs.items()]
+    action_values = config.as_vector()
+    costs = [a.costs[name] for name in ACTION_NAMES]
     capex_by_action = [cost.capex_at_full_gbp * x for cost, x in zip(costs, action_values)]
     month_index = np.arange(n)
     depreciation = np.zeros(n)
@@ -246,13 +252,13 @@ def _transform(b: _Baseline, config: ActionConfig, a: ActionAssumptions) -> _Out
 
 def _prepare(
     baseline: BaselineBundle, config: ActionConfig, assumptions: ActionAssumptions
-) -> tuple[_Baseline, _Outcome]:
-    validate_baseline_bundle(baseline)
-    validate_action_config(config)
-    validate_action_assumptions(assumptions)
+) -> tuple[_Baseline, ActionConfig, _Outcome]:
+    val.validate_baseline(baseline)
+    config = canonical_config(config)
+    val.validate_assumptions(assumptions)
     arrays = _baseline_arrays(baseline)
     _check_compatibility(arrays, assumptions)
-    return arrays, _transform(arrays, config, assumptions)
+    return arrays, config, _transform(arrays, config, assumptions)
 
 
 def simulate_strategy(
@@ -265,7 +271,7 @@ def simulate_strategy(
     may be negative and EV adoption may increase scope2 or total emissions; neither is
     clamped. Raises ContractValidationError for invalid or model-incompatible inputs.
     """
-    arrays, outcome = _prepare(baseline, config, assumptions)
+    arrays, config, outcome = _prepare(baseline, config, assumptions)
     monthly = pd.DataFrame({"timestamp": arrays.timestamps, **outcome.columns})
 
     baseline_co2 = math.fsum(arrays.total)
@@ -274,30 +280,29 @@ def simulate_strategy(
     baseline_profit = math.fsum(arrays.profit)
     total_profit = math.fsum(outcome.columns["operating_profit_gbp"])
     profit_change = total_profit - baseline_profit
-    metrics = SimulationMetrics(
-        baseline_total_co2e_tco2e=baseline_co2,
-        total_co2e_tco2e=total_co2,
-        co2_reduction_tco2e=reduction,
-        co2_reduction_ratio=None if baseline_co2 == 0.0 else reduction / baseline_co2,
-        baseline_total_profit_gbp=baseline_profit,
-        total_profit_gbp=total_profit,
-        profit_change_gbp=profit_change,
-        profit_change_ratio=None if baseline_profit == 0.0 else profit_change / abs(baseline_profit),
-        total_cost_gbp=math.fsum(outcome.columns["budget_cost_gbp"]),
-        total_capex_gbp=math.fsum(outcome.columns["capex_gbp"]),
-        total_incremental_opex_gbp=math.fsum(outcome.columns["incremental_opex_gbp"]),
-        total_operating_savings_gbp=math.fsum(outcome.columns["operating_savings_gbp"]),
-        net_cash_impact_gbp=math.fsum(outcome.columns["net_cash_impact_gbp"]),
-    )
+    # Keys and order follow SIMULATION_METRIC_FIELDS; ratios are None for zero baselines.
+    metrics: dict[str, float | None] = {
+        "baseline_total_co2e_tco2e": baseline_co2,
+        "total_co2e_tco2e": total_co2,
+        "co2_reduction_tco2e": reduction,
+        "co2_reduction_ratio": None if baseline_co2 == 0.0 else reduction / baseline_co2,
+        "baseline_total_profit_gbp": baseline_profit,
+        "total_profit_gbp": total_profit,
+        "profit_change_gbp": profit_change,
+        "profit_change_ratio": None if baseline_profit == 0.0 else profit_change / abs(baseline_profit),
+        "total_cost_gbp": math.fsum(outcome.columns["budget_cost_gbp"]),
+        "total_capex_gbp": math.fsum(outcome.columns["capex_gbp"]),
+        "total_incremental_opex_gbp": math.fsum(outcome.columns["incremental_opex_gbp"]),
+        "total_operating_savings_gbp": math.fsum(outcome.columns["operating_savings_gbp"]),
+        "net_cash_impact_gbp": math.fsum(outcome.columns["net_cash_impact_gbp"]),
+    }
 
-    input_hash = sha256_hex(
-        canonical_json(
-            {
-                "baseline": baseline_fingerprint(baseline),
-                "config": config.to_dict(),
-                "assumptions": assumptions_fingerprint(assumptions),
-            }
-        )
+    input_hash = canonical_hash(
+        {
+            "baseline": baseline_fingerprint(baseline),
+            "config": config.as_dict(),
+            "assumptions": assumptions_fingerprint(assumptions),
+        }
     )
     return SimulationResult(
         schema_version=SCHEMA_VERSION,
@@ -328,5 +333,5 @@ def compute_action_breakdown(
     of the SimulationResult remain authoritative; bucket columns reconcile to them within
     the documented emissions tolerance.
     """
-    arrays, outcome = _prepare(baseline, config, assumptions)
+    arrays, _, outcome = _prepare(baseline, config, assumptions)
     return pd.DataFrame({"timestamp": arrays.timestamps, **outcome.breakdown})

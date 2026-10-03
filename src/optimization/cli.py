@@ -25,8 +25,9 @@ import pymoo
 
 from src.actions import load_action_assumptions, simulate_strategy
 from src.actions.definitions import DEFAULT_ASSUMPTIONS_PATH, REPO_ROOT
-from src.contracts import ACTION_NAMES, ActionConfig, OptimizerConfig
 from src.contracts import serialization as ser
+from src.contracts import validation as val
+from src.contracts.types import ACTION_NAMES, ActionConfig, OptimizerConfig
 from src.optimization.constraints import evaluate_constraints
 from src.optimization.optimizer import optimize_strategies
 from src.optimization.recommendation import recommend_strategy
@@ -50,8 +51,12 @@ def _write(path: str | None, text: str) -> None:
         print(f"wrote {path}")
 
 
+def _load(path: Path | str) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
 def _config_from_args(args: argparse.Namespace) -> ActionConfig:
-    values = ser.load_json(args.config)
+    values = _load(args.config)
     for item in args.action or []:
         name, _, value = item.partition("=")
         if name not in ACTION_NAMES:
@@ -61,34 +66,34 @@ def _config_from_args(args: argparse.Namespace) -> ActionConfig:
 
 
 def _print_metrics(metrics) -> None:
-    ratio = "n/a (zero baseline)" if metrics.co2_reduction_ratio is None else f"{metrics.co2_reduction_ratio:.4%}"
-    print(f"  total CO2e        {metrics.total_co2e_tco2e:,.3f} t (baseline {metrics.baseline_total_co2e_tco2e:,.3f} t; reduction {ratio})")
-    print(f"  operating profit  GBP {metrics.total_profit_gbp:,.2f} (baseline GBP {metrics.baseline_total_profit_gbp:,.2f})")
-    print(f"  gross outlay      GBP {metrics.total_cost_gbp:,.2f} (capex GBP {metrics.total_capex_gbp:,.2f})")
-    print(f"  net cash impact   GBP {metrics.net_cash_impact_gbp:,.2f}")
+    ratio = "n/a (zero baseline)" if metrics["co2_reduction_ratio"] is None else f"{metrics['co2_reduction_ratio']:.4%}"
+    print(f"  total CO2e        {metrics['total_co2e_tco2e']:,.3f} t (baseline {metrics['baseline_total_co2e_tco2e']:,.3f} t; reduction {ratio})")
+    print(f"  operating profit  GBP {metrics['total_profit_gbp']:,.2f} (baseline GBP {metrics['baseline_total_profit_gbp']:,.2f})")
+    print(f"  gross outlay      GBP {metrics['total_cost_gbp']:,.2f} (capex GBP {metrics['total_capex_gbp']:,.2f})")
+    print(f"  net cash impact   GBP {metrics['net_cash_impact_gbp']:,.2f}")
 
 
 def cmd_simulate(args: argparse.Namespace) -> int:
-    baseline = ser.baseline_from_dict(ser.load_json(args.baseline))
+    baseline = val.validate_baseline(ser.baseline_from_dict(_load(args.baseline)))
     assumptions = load_action_assumptions(args.assumptions)
     config = _config_from_args(args)
     result = simulate_strategy(baseline, config, assumptions=assumptions)
     print(f"strategy {result.strategy_id}  provider={result.provenance.provider} is_mock={result.provenance.is_mock}")
     print(f"  assumptions {assumptions.assumptions_id} v{assumptions.version} (calibrated={assumptions.is_calibrated})")
-    print("  config " + ", ".join(f"{k}={v!r}" for k, v in config.to_dict().items()))
+    print("  config " + ", ".join(f"{k}={v!r}" for k, v in config.as_dict().items()))
     _print_metrics(result.metrics)
     if args.constraints:
-        evaluation = evaluate_constraints(result, ser.constraint_config_from_dict(ser.load_json(args.constraints)))
+        evaluation = evaluate_constraints(result, val.validate_constraints(ser.constraints_from_dict(_load(args.constraints))))
         flags = evaluation.satisfied
-        print(f"  feasible={evaluation.feasible} (budget={flags.budget}, profit={flags.profit}, target={flags.target})")
+        print(f"  feasible={evaluation.feasible} (budget={flags['budget']}, profit={flags['profit']}, target={flags['target']})")
     _write(args.output, ser.to_json(result, indent=2))
     return 0
 
 
 def cmd_optimize(args: argparse.Namespace) -> int:
-    baseline = ser.baseline_from_dict(ser.load_json(args.baseline))
+    baseline = val.validate_baseline(ser.baseline_from_dict(_load(args.baseline)))
     assumptions = load_action_assumptions(args.assumptions)
-    constraints = ser.constraint_config_from_dict(ser.load_json(args.constraints))
+    constraints = val.validate_constraints(ser.constraints_from_dict(_load(args.constraints)))
     config = OptimizerConfig(
         seed=args.seed, population_size=args.population, generations=args.generations, max_evaluations=args.max_evaluations
     )
@@ -107,19 +112,18 @@ def cmd_optimize(args: argparse.Namespace) -> int:
     print(f"recommendation: {recommendation.strategy_id} (policy={recommendation.policy}, risk_status={recommendation.risk_status})")
     if recommendation.strategy_id is not None:
         chosen = result.strategies[recommendation.strategy_id]
-        print("  config " + ", ".join(f"{k}={v:.4f}" for k, v in chosen.config.to_dict().items()) + "  (display rounding only)")
+        print("  config " + ", ".join(f"{k}={v:.4f}" for k, v in chosen.config.as_dict().items()) + "  (display rounding only)")
         _print_metrics(chosen.metrics)
     if args.output:
-        payload = ser.optimization_result_to_dict(result, strategies="frontier" if args.compact else "all")
-        _write(args.output, json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False))
+        _write(args.output, ser.to_json(result, indent=2))
     return 0
 
 
 def cmd_profile(args: argparse.Namespace) -> int:
-    baseline = ser.baseline_from_dict(ser.load_json(args.baseline))
+    baseline = val.validate_baseline(ser.baseline_from_dict(_load(args.baseline)))
     assumptions = load_action_assumptions(args.assumptions)
-    constraints = ser.constraint_config_from_dict(ser.load_json(args.constraints))
-    config = ser.action_config_from_dict(ser.load_json(DEFAULT_CONFIG))
+    constraints = val.validate_constraints(ser.constraints_from_dict(_load(args.constraints)))
+    config = ser.action_config_from_dict(_load(DEFAULT_CONFIG))
     simulate_strategy(baseline, config, assumptions=assumptions)  # warm-up
     samples = []
     for _ in range(args.repeats):
@@ -173,7 +177,6 @@ def build_parser() -> argparse.ArgumentParser:
     optimize.add_argument("--max-evaluations", type=int, default=defaults.max_evaluations)
     optimize.add_argument("--tolerance", choices=["conservative", "balanced", "aggressive"], default="balanced")
     optimize.add_argument("--output", help="write the OptimizationResult JSON here")
-    optimize.add_argument("--compact", action="store_true", help="serialize only frontier and no-op strategies")
     optimize.set_defaults(handler=cmd_optimize)
 
     profile = sub.add_parser("profile", help="measure simulator and reference optimizer runtime")

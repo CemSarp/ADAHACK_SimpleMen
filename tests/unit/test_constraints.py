@@ -11,6 +11,7 @@ import pytest
 from src.actions import simulate_strategy
 from src.contracts import ACTION_NAMES, ActionConfig, ConstraintConfig, ContractValidationError
 from src.contracts import serialization as ser
+from src.contracts import validation as val
 from src.optimization.constraints import (
     SOLVER_FEASIBILITY_TOLERANCE,
     evaluate_constraints,
@@ -27,12 +28,12 @@ def only(**actions: float) -> ActionConfig:
 
 
 def with_metrics(result, **fields):
-    return dataclasses.replace(result, metrics=dataclasses.replace(result.metrics, **fields))
+    return dataclasses.replace(result, metrics={**result.metrics, **fields})
 
 
 @pytest.fixture
 def noop(baseline, assumptions):
-    return simulate_strategy(baseline, ActionConfig.zeros(), assumptions=assumptions)
+    return simulate_strategy(baseline, ActionConfig.noop(), assumptions=assumptions)
 
 
 @pytest.fixture
@@ -52,10 +53,10 @@ def test_fixture_candidate_values_and_signs(noop, nonzero, example_constraints):
     assert evaluation.g_budget == pytest.approx((186_581.12 - 500_000) / 500_000, rel=1e-12)
     assert evaluation.g_profit == pytest.approx((1_000_000 - 1_210_940.7847619047) / 1_200_000, rel=1e-12)
     assert evaluation.g_target == pytest.approx(0.2 - 0.29688, rel=1e-12)
-    assert evaluation.raw_violations.budget_gbp == 0.0
+    assert evaluation.raw_violations["budget_gbp"] == 0.0
     noop_eval = evaluate_constraints(noop, example_constraints)
-    assert noop_eval.satisfied.budget and noop_eval.satisfied.profit and not noop_eval.satisfied.target
-    assert noop_eval.raw_violations.reduction_ratio == pytest.approx(0.2)
+    assert noop_eval.satisfied["budget"] and noop_eval.satisfied["profit"] and not noop_eval.satisfied["target"]
+    assert noop_eval.raw_violations["reduction_ratio"] == pytest.approx(0.2)
 
 
 def test_budget_zero(noop, nonzero):
@@ -63,8 +64,8 @@ def test_budget_zero(noop, nonzero):
     assert evaluate_constraints(noop, constraints).g_budget == 0.0  # 0 / max(0, 1)
     over = evaluate_constraints(nonzero, constraints)
     assert over.g_budget == pytest.approx(186_581.12, rel=1e-12)  # normalized by 1 GBP when budget is 0
-    assert over.raw_violations.budget_gbp == pytest.approx(186_581.12, rel=1e-12)
-    assert not over.feasible and not over.satisfied.budget
+    assert over.raw_violations["budget_gbp"] == pytest.approx(186_581.12, rel=1e-12)
+    assert not over.feasible and not over.satisfied["budget"]
     boundary = ConstraintConfig(budget_gbp=0.0, min_total_profit_gbp=1_200_000.0, min_co2_reduction_ratio=0.0)
     assert evaluate_constraints(noop, boundary).feasible  # every constraint exactly at its boundary
 
@@ -80,15 +81,15 @@ def test_zero_target_rejects_emission_increases(baseline, assumptions):
     dirty = simulate_strategy(baseline, only(ev_adoption=1.0), assumptions=assumptions_with(assumptions, grid_tco2e_per_kwh=0.01))
     constraints = ConstraintConfig(budget_gbp=1e9, min_total_profit_gbp=-1e9, min_co2_reduction_ratio=0.0)
     evaluation = evaluate_constraints(dirty, constraints)
-    assert evaluation.g_target == pytest.approx(0.72) and not evaluation.satisfied.target
-    assert evaluation.raw_violations.reduction_ratio == pytest.approx(0.72)
+    assert evaluation.g_target == pytest.approx(0.72) and not evaluation.satisfied["target"]
+    assert evaluation.raw_violations["reduction_ratio"] == pytest.approx(0.72)
 
 
 def test_impossible_target_is_infeasible_even_at_full_implementation(baseline, assumptions):
     full = simulate_strategy(baseline, ActionConfig(*[1.0] * 6), assumptions=assumptions)
     evaluation = evaluate_constraints(full, ConstraintConfig(1e12, -1e12, 1.0))
-    assert full.metrics.co2_reduction_ratio < 1.0
-    assert evaluation.g_target == pytest.approx(1.0 - full.metrics.co2_reduction_ratio) and not evaluation.feasible
+    assert full.metrics["co2_reduction_ratio"] < 1.0
+    assert evaluation.g_target == pytest.approx(1.0 - full.metrics["co2_reduction_ratio"]) and not evaluation.feasible
 
 
 def test_zero_baseline_with_positive_target_is_invalid(assumptions):
@@ -98,7 +99,7 @@ def test_zero_baseline_with_positive_target_is_invalid(assumptions):
         evaluate_constraints(result, ConstraintConfig(1e9, -1e9, 0.1))
     assert info.value.field == "constraints.min_co2_reduction_ratio"
     evaluation = evaluate_constraints(result, ConstraintConfig(1e9, -1e9, 0.0))
-    assert evaluation.g_target == 0.0 and evaluation.raw_violations.reduction_ratio == 0.0 and evaluation.feasible
+    assert evaluation.g_target == 0.0 and evaluation.raw_violations["reduction_ratio"] == 0.0 and evaluation.feasible
 
 
 @pytest.mark.parametrize(
@@ -115,7 +116,7 @@ def test_zero_baseline_with_positive_target_is_invalid(assumptions):
 def test_budget_epsilon_boundary(noop, budget, cost, satisfied):
     result = with_metrics(noop, total_cost_gbp=cost)
     evaluation = evaluate_constraints(result, ConstraintConfig(budget, 0.0, 0.0))
-    assert evaluation.satisfied.budget is satisfied
+    assert evaluation.satisfied["budget"] is satisfied
     assert evaluation.g_budget == pytest.approx((cost - budget) / max(budget, 1.0), rel=1e-12, abs=1e-18)
 
 
@@ -125,7 +126,7 @@ def test_budget_epsilon_boundary(noop, budget, cost, satisfied):
 def test_profit_epsilon_boundary(noop, profit, satisfied):
     result = with_metrics(noop, total_profit_gbp=profit)
     evaluation = evaluate_constraints(result, ConstraintConfig(1e9, 1_000_000.0, 0.0))
-    assert evaluation.satisfied.profit is satisfied
+    assert evaluation.satisfied["profit"] is satisfied
     assert evaluation.g_profit == pytest.approx((1_000_000.0 - profit) / 1_200_000.0, abs=1e-18)
 
 
@@ -133,7 +134,7 @@ def test_profit_epsilon_boundary(noop, profit, satisfied):
 def test_target_epsilon_boundary(noop, ratio, satisfied):
     result = with_metrics(noop, co2_reduction_ratio=ratio)
     evaluation = evaluate_constraints(result, ConstraintConfig(1e9, -1e9, 0.2))
-    assert evaluation.satisfied.target is satisfied
+    assert evaluation.satisfied["target"] is satisfied
     assert evaluation.g_target == pytest.approx(0.2 - ratio, abs=1e-18)
     assert SOLVER_FEASIBILITY_TOLERANCE == 1e-8
 
@@ -157,13 +158,15 @@ def test_profit_normalization_uses_largest_scale(noop):
 )
 def test_invalid_constraint_configs_are_rejected(kwargs):
     with pytest.raises(ContractValidationError):
-        ConstraintConfig(**kwargs)
+        val.validate_constraints(ConstraintConfig(**kwargs))
+    with pytest.raises(ContractValidationError):  # and the evaluator never computes with them
+        evaluate_constraints(None, ConstraintConfig(**kwargs))  # type: ignore[arg-type]
 
 
-def test_constraint_file_parsing_is_strict():
-    assert ser.constraint_config_from_dict(load_fixture("constraints.json")) == ConstraintConfig(500_000.0, 1_000_000.0, 0.2)
-    with pytest.raises(ContractValidationError, match="unknown"):
-        ser.constraint_config_from_dict({**load_fixture("constraints.json"), "annual_budget_gbp": 1.0})
+def test_constraint_file_parses_to_horizon_totals():
+    assert ser.constraints_from_dict(load_fixture("constraints.json")) == ConstraintConfig(500_000.0, 1_000_000.0, 0.2)
+    with pytest.raises(ContractValidationError, match="required"):
+        ser.constraints_from_dict({"budget_gbp": 1.0, "min_total_profit_gbp": 0.0})
 
 
 def test_wrong_types_are_rejected(nonzero, example_constraints):
@@ -188,7 +191,7 @@ def test_what_if_equals_direct_simulation_and_constraint_call(baseline, assumpti
 
 
 def test_what_if_from_a_ui_json_payload_is_identical(baseline, assumptions, example_config):
-    payload = json.loads(json.dumps({"config": example_config.to_dict()}))
+    payload = json.loads(json.dumps({"config": example_config.as_dict()}))
     from_ui = evaluate_what_if(baseline, ser.action_config_from_dict(payload["config"]), assumptions=assumptions)
     direct = simulate_strategy(baseline, example_config, assumptions=assumptions)
     assert from_ui.constraints is None

@@ -16,7 +16,6 @@ from src.contracts import (
     OptimizationResult,
     Provenance,
     RiskResult,
-    RiskSummary,
 )
 from src.contracts import serialization as ser
 from src.optimization import evaluate_what_if, optimize_strategies, recommend_strategy, select_risk_pool
@@ -36,7 +35,7 @@ def optimization_with(points, *, status="ok", is_mock=False) -> OptimizationResu
     """OptimizationResult whose frontier is exactly ``points`` = [(strategy_id, emissions, profit), ...]."""
     frame = candidate_table(*({"strategy_id": s, "total_co2e_tco2e": e, "total_profit_gbp": p} for s, e, p in points))
     frame["pareto_rank"] = 0
-    placeholder = simulate_strategy(fixture_baseline(), ActionConfig.zeros(), assumptions=fixture_assumptions())
+    placeholder = simulate_strategy(fixture_baseline(), ActionConfig.noop(), assumptions=fixture_assumptions())
     return OptimizationResult(
         schema_version="1.0.0",
         run_id="optimization-test",
@@ -52,7 +51,7 @@ def optimization_with(points, *, status="ok", is_mock=False) -> OptimizationResu
 
 
 def risk(sid, *, co2_mean, co2_p95, profit_mean, profit_p05, joint, baseline_id="baseline-demo-v1", uncertainty_id="u-1", seed=42):
-    summary = RiskSummary(
+    summary = dict(
         co2_mean_tco2e=co2_mean,
         co2_p05_tco2e=co2_mean - 5.0,
         co2_p95_tco2e=co2_p95,
@@ -147,14 +146,14 @@ def test_invalid_requests_are_rejected():
 
 
 def test_fixture_optimization_selects_its_single_feasible_strategy():
-    optimization = ser.optimization_result_from_dict(load_fixture("optimization_ok.json"))
+    optimization = ser.optimization_from_dict(load_fixture("optimization_ok.json"))
     result = recommend_strategy(optimization)
     assert result.strategy_id == "strategy-8be15857fffc57f6" and result.provenance.is_mock
 
 
 def test_real_optimization_recommendation_is_deterministic_and_matches_manual_what_if():
     baseline, assumptions = fixture_baseline(), fixture_assumptions()
-    constraints = ser.constraint_config_from_dict(load_fixture("constraints.json"))
+    constraints = ser.constraints_from_dict(load_fixture("constraints.json"))
     from src.contracts import OptimizerConfig
 
     optimization = optimize_strategies(
@@ -260,8 +259,8 @@ def test_results_outside_the_pool_are_ignored():
 
 
 def test_fixture_risk_summary_on_fixture_frontier():
-    optimization = ser.optimization_result_from_dict(load_fixture("optimization_ok.json"))
-    summary = ser.risk_result_from_dict(load_fixture("risk_summary.json"))
+    optimization = ser.optimization_from_dict(load_fixture("optimization_ok.json"))
+    summary = ser.risk_from_dict(load_fixture("risk_summary.json"))
     result = recommend_strategy(optimization, risk_results={summary.strategy_id: summary}, tolerance="conservative")
     assert result.strategy_id == "strategy-8be15857fffc57f6" and result.risk_status == "evaluated"
     assert result.diagnostics["selected_joint_feasibility_probability"] == pytest.approx(0.96)

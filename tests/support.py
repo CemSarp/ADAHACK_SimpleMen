@@ -1,4 +1,8 @@
-"""Shared test helpers: fixture loading and contract-valid baseline/assumption variants."""
+"""WS2 test helpers: fixture loading and contract-valid baseline/assumption variants.
+
+Everything goes through the shared contract serializers and validators (the same path
+as tests/mocks/fixtures.py), so WS2 tests use the one schema definition.
+"""
 
 from __future__ import annotations
 
@@ -11,23 +15,25 @@ from typing import Any, Callable
 
 import numpy as np
 
-from src.contracts import ActionAssumptions, ActionCosts, BaselineBundle
 from src.contracts import serialization as ser
+from src.contracts import validation as val
+from src.contracts.types import ActionAssumptions, BaselineBundle
+from tests.mocks import fixtures
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures" / "v1"
+FIXTURES = fixtures.FIXTURE_DIR
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_fixture(name: str) -> Any:
-    return ser.load_json(FIXTURES / name)
+    return fixtures.load_json(name)
 
 
 def fixture_baseline() -> BaselineBundle:
-    return ser.baseline_from_dict(load_fixture("baseline_12m.json"))
+    return fixtures.baseline()
 
 
 def fixture_assumptions() -> ActionAssumptions:
-    return ser.action_assumptions_from_dict(load_fixture("action_assumptions.json"))
+    return fixtures.assumptions()
 
 
 def make_baseline(
@@ -65,27 +71,29 @@ def make_baseline(
         "operating_profit_gbp": float(sum(r["operating_profit_gbp"] for r in rows)),
         "total_co2e_tco2e": float(sum(r["total_co2e_tco2e"] for r in rows)),
     }
-    return ser.baseline_from_dict(json.loads(json.dumps(data)))
+    return val.validate_baseline(ser.baseline_from_dict(json.loads(json.dumps(data))))
 
 
 def assumptions_with(base: ActionAssumptions | None = None, **fields: Any) -> ActionAssumptions:
-    """Variant with scalar fields replaced; a new ID keeps strategy identities distinct."""
+    """Validated variant with scalar fields replaced; a new ID keeps strategy identities distinct."""
     base = base or fixture_assumptions()
     fields.setdefault("assumptions_id", base.assumptions_id + "-variant")
-    return dataclasses.replace(base, **fields)
+    return val.validate_assumptions(dataclasses.replace(base, **fields))
 
 
 def assumptions_with_cost(base: ActionAssumptions, action: str, **cost_fields: Any) -> ActionAssumptions:
-    costs = {name: cost for name, cost in base.costs.items()}
+    costs = dict(base.costs)
     costs[action] = dataclasses.replace(costs[action], **cost_fields)
-    return dataclasses.replace(base, assumptions_id=base.assumptions_id + f"-{action}-cost", costs=ActionCosts(**costs))
+    return val.validate_assumptions(
+        dataclasses.replace(base, assumptions_id=base.assumptions_id + f"-{action}-cost", costs=costs)
+    )
 
 
 def candidate_table(*rows: dict[str, Any]):
     """Candidates/Pareto-schema frame from partial rows (feasible, distinct configs by default)."""
     import pandas as pd
 
-    from src.contracts import ACTION_NAMES, CANDIDATE_COLUMNS
+    from src.contracts.types import ACTION_NAMES, OPTIMIZATION_TABLE_COLUMNS
 
     defaults = {
         "total_cost_gbp": 1_000.0,
@@ -100,7 +108,7 @@ def candidate_table(*rows: dict[str, Any]):
     for i, row in enumerate(rows):
         record = {**dict.fromkeys(ACTION_NAMES, 0.0), **defaults, "renewable_energy": (i + 1) / 1_000, **row}
         records.append(record)
-    frame = pd.DataFrame(records, columns=[name for name, _ in CANDIDATE_COLUMNS])
+    frame = pd.DataFrame(records, columns=list(OPTIMIZATION_TABLE_COLUMNS))
     frame["strategy_id"] = frame["strategy_id"].astype(object)
     return frame
 

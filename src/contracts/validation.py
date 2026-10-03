@@ -1,423 +1,560 @@
-"""Boundary validators for contract 1.0.0 objects (shared C0 file; flag for WS4 review).
+"""Contract validators (version 1.0.0).
 
-Every validator raises :class:`ContractValidationError` with a dotted field path and a
-reason, and returns its (unchanged) argument on success. Inputs are never mutated.
+Every validator raises ContractValidationError(field, reason) and returns the
+validated object unchanged, so it can be used inline. Validators check shape,
+units, ranges and documented identities; they never recompute domain outcomes
+such as emissions, feasibility or Pareto ranking.
 """
 
 from __future__ import annotations
 
-import datetime as dt
 import math
-import re
-from typing import Any
+from datetime import date
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 import pandas as pd
 
-from src.contracts._scalars import require_int, require_str
-from src.contracts.errors import ContractValidationError
-from src.contracts.types import (
+from .errors import ContractValidationError, UnsupportedHorizon
+from .identity import STRATEGY_ID_PREFIX
+from .types import (
     ACTION_NAMES,
-    BASELINE_MONTHLY_COLUMNS,
-    CANDIDATE_COLUMNS,
-    DATA_KINDS,
+    ASSUMPTION_SCALAR_FIELDS,
+    BACKTEST_FOLD_COLUMNS,
+    BACKTEST_OOF_COLUMNS,
+    BENCHMARK_STATUSES,
+    FORECAST_TARGETS,
+    HISTORY_COLUMNS,
+    HISTORY_FLOAT_COLUMNS,
+    HISTORY_INT_COLUMNS,
+    NULLABLE_METRIC_FIELDS,
+    OPTIMIZATION_STATUSES,
+    OPTIMIZATION_TABLE_COLUMNS,
+    RISK_STATUSES,
+    RISK_SUMMARY_FIELDS,
+    SCOPE_COLUMNS,
+    SHAP_COLUMNS,
+    SIMULATION_METRIC_FIELDS,
     SIMULATION_MONTHLY_COLUMNS,
-    SUPPORTED_BASELINE_HORIZONS,
     SUPPORTED_SCHEMA_MAJOR,
+    TOLERANCES,
     ActionAssumptions,
     ActionConfig,
+    AnalysisRequest,
+    BacktestReport,
     BaselineBundle,
-    BaselineTotals,
-    ColumnSpec,
+    BenchmarkResult,
     ConstraintConfig,
+    ExplanationResult,
+    OptimizationResult,
     OptimizerConfig,
     Provenance,
+    RecommendationResult,
+    RiskConfig,
     RiskResult,
-    RiskSummary,
-    SimulationMetrics,
     SimulationResult,
 )
 
-#: Scope/total identities: relative 1e-8 plus absolute 1e-6 tonnes (DATA_SCHEMAS.md §1).
-EMISSIONS_RTOL = 1e-8
-EMISSIONS_ATOL_TCO2E = 1e-6
-#: Currency reconciliation: absolute 0.01 GBP (DATA_SCHEMAS.md §1).
+# Numerical tolerances (DATA_SCHEMAS.md section 1, ACTION_MODEL.md section 5).
+SCOPE_RTOL = 1e-8
+SCOPE_ATOL_TCO2E = 1e-6
 CURRENCY_ATOL_GBP = 0.01
-
-_SEMVER = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
-_EMPTY_DTYPES = {"str": object, "float": np.float64, "nullable_float": np.float64, "int": np.int64, "bool": bool}
-
-_BASELINE_NUMERIC = tuple(name for name, kind in BASELINE_MONTHLY_COLUMNS if kind in ("float", "int"))
-_BASELINE_INDEX = {name: i for i, name in enumerate(_BASELINE_NUMERIC)}
-_SIMULATION_NUMERIC = tuple(name for name, kind in SIMULATION_MONTHLY_COLUMNS if kind == "float")
-_SIMULATION_INDEX = {name: i for i, name in enumerate(_SIMULATION_NUMERIC)}
+RATIO_ATOL = 1e-8
+SOLVER_FEASIBILITY_TOL = 1e-8
+ALLOWED_HORIZONS: tuple[int, ...] = (12, 36, 60)
+MAX_RISK_SIMULATIONS = 5000
 
 
-def emissions_tolerance(reference: float) -> float:
-    """Absolute tolerance for comparing emission quantities of magnitude ``reference``."""
-    return EMISSIONS_ATOL_TCO2E + EMISSIONS_RTOL * abs(reference)
+def _fail(field: str, reason: str) -> None:
+    raise ContractValidationError(field, reason)
 
 
-def validate_schema_version(field: str, value: Any) -> str:
-    text = require_str(field, value)
-    match = _SEMVER.match(text)
-    if match is None:
-        raise ContractValidationError(field, f"must be MAJOR.MINOR.PATCH; got {text!r}")
-    if int(match.group(1)) != SUPPORTED_SCHEMA_MAJOR:
-        raise ContractValidationError(
-            field, f"unsupported major version {text!r}; this build supports {SUPPORTED_SCHEMA_MAJOR}.x.y"
-        )
-    return text
+def _is_real_number(value: Any) -> bool:
+    return isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
+        value, (bool, np.bool_)
+    )
 
 
-def _require_instance(field: str, value: Any, expected: type) -> None:
-    if not isinstance(value, expected):
-        raise ContractValidationError(field, f"expected {expected.__name__}; got {type(value).__name__}")
+def require_finite(field: str, value: Any) -> float:
+    if not _is_real_number(value):
+        _fail(field, f"expected a number, got {type(value).__name__}")
+    if not math.isfinite(float(value)):
+        _fail(field, "must be finite")
+    return float(value)
 
 
-# Configuration objects validate themselves on construction; boundary checks confirm the type.
+def require_ratio(field: str, value: Any) -> float:
+    v = require_finite(field, value)
+    if not 0.0 <= v <= 1.0:
+        hint = " (0-100 percentages are not accepted; use a 0-1 ratio)" if 1.0 < v <= 100.0 else ""
+        _fail(field, f"must be within [0, 1], got {v!r}{hint}")
+    return v
 
 
-def validate_action_config(config: Any, field: str = "config") -> ActionConfig:
-    _require_instance(field, config, ActionConfig)
-    return config
-
-
-def validate_constraint_config(constraints: Any, field: str = "constraints") -> ConstraintConfig:
-    _require_instance(field, constraints, ConstraintConfig)
-    return constraints
-
-
-def validate_optimizer_config(config: Any, field: str = "optimizer_config") -> OptimizerConfig:
-    _require_instance(field, config, OptimizerConfig)
-    return config
-
-
-def validate_action_assumptions(assumptions: Any, field: str = "assumptions") -> ActionAssumptions:
-    _require_instance(field, assumptions, ActionAssumptions)
-    return assumptions
-
-
-def validate_provenance(provenance: Any, field: str = "provenance") -> Provenance:
-    _require_instance(field, provenance, Provenance)
-    return provenance
-
-
-# ---------------------------------------------------------------------------
-# DataFrame helpers
-# ---------------------------------------------------------------------------
-
-
-def _require_columns(field: str, frame: Any, columns: ColumnSpec) -> None:
-    _require_instance(field, frame, pd.DataFrame)
-    if frame.columns.duplicated().any():
-        raise ContractValidationError(field, "duplicate column names")
-    missing = [name for name, _ in columns if name not in frame.columns]
-    if missing:
-        raise ContractValidationError(field, f"missing required columns {missing}")
-
-
-def _numeric_block(field: str, frame: pd.DataFrame, names: tuple[str, ...]) -> np.ndarray:
-    """Return the named columns as a float64 2-D copy after dtype and finiteness checks."""
-    for name in names:
-        dtype = frame[name].dtype
-        if not pd.api.types.is_numeric_dtype(dtype) or pd.api.types.is_bool_dtype(dtype):
-            raise ContractValidationError(f"{field}.{name}", f"must be numeric; got dtype {dtype}")
-    try:
-        block = frame.loc[:, list(names)].to_numpy(dtype=np.float64, copy=True)
-    except (TypeError, ValueError) as exc:  # e.g. pandas NA in nullable dtypes
-        raise ContractValidationError(field, f"numeric columns must not contain missing values ({exc})") from None
-    finite = np.isfinite(block)
-    if not finite.all():
-        row, col = np.argwhere(~finite)[0]
-        raise ContractValidationError(f"{field}.{names[col]}", f"row {row} must be finite; got {block[row, col]!r}")
-    return block
-
-
-def _month_starts(field: str, series: pd.Series) -> np.ndarray:
-    """Validate a timezone-naive calendar month-start column; return datetime64[M] values."""
-    dtype = series.dtype
-    if isinstance(dtype, pd.DatetimeTZDtype) or not pd.api.types.is_datetime64_dtype(dtype):
-        raise ContractValidationError(field, f"must be timezone-naive datetime64; got dtype {dtype}")
-    values = series.to_numpy(dtype="datetime64[ns]")
-    if np.isnat(values).any():
-        raise ContractValidationError(field, "must not contain missing dates")
-    months = values.astype("datetime64[M]")
-    if not (months.astype("datetime64[ns]") == values).all():
-        raise ContractValidationError(field, "must be calendar month starts (YYYY-MM-01 00:00)")
-    return months
-
-
-def require_month_start_date(field: str, value: Any) -> dt.date:
-    """Accept a ``datetime.date`` (or midnight ``datetime``) on the first day of a month."""
-    if isinstance(value, dt.datetime):
-        if value.tzinfo is not None or value.time() != dt.time(0, 0):
-            raise ContractValidationError(field, "must be a timezone-naive calendar date")
-        value = value.date()
-    if not isinstance(value, dt.date):
-        raise ContractValidationError(field, f"must be a calendar date; got {type(value).__name__}")
-    if value.day != 1:
-        raise ContractValidationError(field, f"must be a month start (YYYY-MM-01); got {value.isoformat()}")
+def require_nonempty_str(field: str, value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        _fail(field, "must be a nonempty string")
     return value
 
 
-def _first_bad(field: str, months: np.ndarray, mask: np.ndarray, reason: str) -> None:
-    if mask.any():
-        index = int(np.flatnonzero(mask)[0])
-        raise ContractValidationError(field, f"{reason} (first at {months[index]})")
+def require_positive_int(field: str, value: Any) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
+        _fail(field, f"expected a positive integer, got {type(value).__name__}")
+    if int(value) <= 0:
+        _fail(field, "must be a positive integer")
+    return int(value)
 
 
-# ---------------------------------------------------------------------------
-# BaselineBundle
-# ---------------------------------------------------------------------------
+def validate_schema_version(version: Any, field: str = "schema_version") -> str:
+    require_nonempty_str(field, version)
+    parts = version.split(".")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts):
+        _fail(field, f"must be MAJOR.MINOR.PATCH, got {version!r}")
+    if int(parts[0]) != SUPPORTED_SCHEMA_MAJOR:
+        _fail(field, f"unsupported major version {version!r}; supported major is {SUPPORTED_SCHEMA_MAJOR}")
+    return version
 
 
-def validate_baseline_bundle(baseline: Any) -> BaselineBundle:
-    """Validate metadata, monthly schema, date continuity, ranges and identities (§2, §4)."""
-    _require_instance("baseline", baseline, BaselineBundle)
-    validate_schema_version("baseline.schema_version", baseline.schema_version)
-    require_str("baseline.run_id", baseline.run_id)
-    validate_provenance(baseline.provenance, "baseline.provenance")
-    for name in ("baseline_id", "company_id", "model_id", "driver_policy_id", "scope2_method"):
-        require_str(f"baseline.{name}", getattr(baseline, name))
-    if baseline.data_kind not in DATA_KINDS:
-        raise ContractValidationError("baseline.data_kind", f"must be one of {list(DATA_KINDS)}; got {baseline.data_kind!r}")
-    if baseline.currency != "GBP":
-        raise ContractValidationError("baseline.currency", f"must be 'GBP'; got {baseline.currency!r}")
-    horizon = require_int("baseline.horizon_months", baseline.horizon_months, minimum=1)
-    if horizon not in SUPPORTED_BASELINE_HORIZONS:
-        raise ContractValidationError(
-            "baseline.horizon_months", f"must be one of {list(SUPPORTED_BASELINE_HORIZONS)}; got {horizon}"
-        )
-    history_end = require_month_start_date("baseline.history_end", baseline.history_end)
-    _require_instance("baseline.totals", baseline.totals, BaselineTotals)
+def validate_provenance(p: Provenance, field: str = "provenance") -> Provenance:
+    if not isinstance(p, Provenance):
+        _fail(field, "must be a Provenance object")
+    require_nonempty_str(f"{field}.provider", p.provider)
+    if not isinstance(p.is_mock, bool):
+        _fail(f"{field}.is_mock", "must be a bool")
+    if p.seed is not None and (isinstance(p.seed, bool) or not isinstance(p.seed, int)):
+        _fail(f"{field}.seed", "must be an int or null")
+    require_nonempty_str(f"{field}.input_hash", p.input_hash)
+    require_nonempty_str(f"{field}.config_id", p.config_id)
+    if p.assumptions_id is not None:
+        require_nonempty_str(f"{field}.assumptions_id", p.assumptions_id)
+    return p
 
-    monthly = baseline.monthly
-    _require_columns("baseline.monthly", monthly, BASELINE_MONTHLY_COLUMNS)
-    if len(monthly) != horizon:
-        raise ContractValidationError("baseline.monthly", f"expected {horizon} rows (horizon_months); got {len(monthly)}")
 
-    months = _month_starts("baseline.monthly.timestamp", monthly["timestamp"])
-    expected = np.datetime64(history_end, "M") + 1 + np.arange(horizon)
-    if not (months == expected).all():
-        raise ContractValidationError(
-            "baseline.monthly.timestamp",
-            f"must be {horizon} unique, ascending, contiguous months starting {expected[0]}-01 "
-            "(one month after history_end)",
-        )
+def _validate_common(obj: Any, name: str) -> None:
+    validate_schema_version(obj.schema_version, f"{name}.schema_version")
+    require_nonempty_str(f"{name}.run_id", obj.run_id)
+    validate_provenance(obj.provenance, f"{name}.provenance")
 
-    company = monthly["company_id"].to_numpy(dtype=object)
-    if not all(isinstance(value, str) for value in company) or not (company == baseline.company_id).all():
-        raise ContractValidationError("baseline.monthly.company_id", "every row must equal baseline.company_id (one company)")
 
-    block = _numeric_block("baseline.monthly", monthly, _BASELINE_NUMERIC)
+def _require_columns(frame: Any, required: Iterable[str], field: str) -> pd.DataFrame:
+    if not isinstance(frame, pd.DataFrame):
+        _fail(field, "must be a pandas DataFrame")
+    missing = [c for c in required if c not in frame.columns]
+    if missing:
+        _fail(field, f"missing required columns {missing}")
+    return frame
 
-    def col(name: str) -> np.ndarray:
-        return block[:, _BASELINE_INDEX[name]]
 
-    field = "baseline.monthly"
-    _first_bad(f"{field}.revenue_gbp", months, col("revenue_gbp") <= 0.0, "must be > 0")
-    for name in ("employees", "fleet_size"):
-        values = col(name)
-        _first_bad(f"{field}.{name}", months, (values < 0.0) | (values != np.floor(values)), "must be a nonnegative integer")
-    for name in (
-        "electricity_kwh",
-        "gas_kwh",
-        "fleet_km",
-        "business_travel_km",
-        "cloud_compute_hours",
-        "scope1_tco2e",
-        "scope2_tco2e",
-        "scope3_tco2e",
-        "total_co2e_tco2e",
+def _require_finite_columns(frame: pd.DataFrame, columns: Iterable[str], field: str) -> None:
+    for col in columns:
+        series = frame[col]
+        if not pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
+            _fail(f"{field}.{col}", f"must be numeric, got dtype {series.dtype}")
+        values = series.to_numpy(dtype="float64")
+        if not np.all(np.isfinite(values)):
+            _fail(f"{field}.{col}", "contains missing or non-finite values")
+
+
+def _require_monthly_dates(frame: pd.DataFrame, field: str) -> pd.Series:
+    ts = frame["timestamp"]
+    if not pd.api.types.is_datetime64_dtype(ts):
+        _fail(f"{field}.timestamp", f"must be timezone-naive datetime64, got {ts.dtype}")
+    if ts.isna().any():
+        _fail(f"{field}.timestamp", "contains missing dates")
+    if not (ts.dt.day == 1).all() or not (ts.dt.normalize() == ts).all():
+        _fail(f"{field}.timestamp", "must be calendar month starts (YYYY-MM-01)")
+    if ts.duplicated().any():
+        _fail(f"{field}.timestamp", "contains duplicate months")
+    if len(ts) > 1:
+        periods = ts.dt.year * 12 + ts.dt.month
+        if not (periods.diff().iloc[1:] == 1).all():
+            _fail(f"{field}.timestamp", "months must be unique, ascending and contiguous")
+    return ts
+
+
+def validate_history_frame(frame: pd.DataFrame, field: str = "history") -> pd.DataFrame:
+    """Company history / baseline monthly schema (DATA_SCHEMAS.md section 2)."""
+    _require_columns(frame, HISTORY_COLUMNS, field)
+    if len(frame) == 0:
+        _fail(field, "must contain at least one month")
+    companies = frame["company_id"].dropna().unique()
+    if frame["company_id"].isna().any() or len(companies) != 1:
+        _fail(f"{field}.company_id", "must contain exactly one nonempty company ID")
+    require_nonempty_str(f"{field}.company_id", str(companies[0]))
+    _require_monthly_dates(frame, field)
+    _require_finite_columns(frame, HISTORY_FLOAT_COLUMNS + HISTORY_INT_COLUMNS, field)
+    for col in HISTORY_INT_COLUMNS:
+        if not pd.api.types.is_integer_dtype(frame[col]):
+            _fail(f"{field}.{col}", f"must be an integer count, got dtype {frame[col].dtype}")
+    if (frame["revenue_gbp"] <= 0).any():
+        _fail(f"{field}.revenue_gbp", "must be > 0")
+    nonneg = [
+        "employees", "electricity_kwh", "gas_kwh", "fleet_size", "fleet_km",
+        "business_travel_km", "cloud_compute_hours", *SCOPE_COLUMNS, "total_co2e_tco2e",
+    ]
+    for col in nonneg:
+        if (frame[col] < 0).any():
+            _fail(f"{field}.{col}", "must be >= 0")
+    for col in ("renewable_energy_share", "ev_share"):
+        if ((frame[col] < 0) | (frame[col] > 1)).any():
+            _fail(f"{field}.{col}", "must be a ratio within [0, 1] (not a 0-100 percentage)")
+    scope_sum = frame[list(SCOPE_COLUMNS)].sum(axis=1).to_numpy()
+    if not np.allclose(scope_sum, frame["total_co2e_tco2e"].to_numpy(), rtol=SCOPE_RTOL, atol=SCOPE_ATOL_TCO2E):
+        _fail(f"{field}.total_co2e_tco2e", "must equal scope1 + scope2 + scope3 within tolerance")
+    return frame
+
+
+def validate_horizon(horizon_months: Any, supported: tuple[int, ...] | None = None) -> int:
+    h = require_positive_int("horizon_months", horizon_months)
+    if h not in ALLOWED_HORIZONS:
+        _fail("horizon_months", f"must be one of {list(ALLOWED_HORIZONS)}")
+    if supported is not None and h not in supported:
+        raise UnsupportedHorizon(h, supported)
+    return h
+
+
+def _months_after(d: date, n: int) -> date:
+    idx = d.year * 12 + (d.month - 1) + n
+    return date(idx // 12, idx % 12 + 1, 1)
+
+
+def validate_baseline(b: BaselineBundle) -> BaselineBundle:
+    if not isinstance(b, BaselineBundle):
+        _fail("baseline", "must be a BaselineBundle")
+    _validate_common(b, "baseline")
+    require_nonempty_str("baseline.baseline_id", b.baseline_id)
+    require_nonempty_str("baseline.company_id", b.company_id)
+    validate_horizon(b.horizon_months)
+    require_nonempty_str("baseline.model_id", b.model_id)
+    require_nonempty_str("baseline.driver_policy_id", b.driver_policy_id)
+    if b.data_kind not in ("synthetic", "reported", "interpolated"):
+        _fail("baseline.data_kind", "must be synthetic, reported or interpolated")
+    if b.currency != "GBP":
+        _fail("baseline.currency", "must be GBP")
+    if not isinstance(b.history_end, date) or b.history_end.day != 1:
+        _fail("baseline.history_end", "must be a month-start date")
+    monthly = validate_history_frame(b.monthly, "baseline.monthly")
+    if len(monthly) != b.horizon_months:
+        _fail("baseline.monthly", f"must have exactly {b.horizon_months} rows, got {len(monthly)}")
+    if (monthly["company_id"] != b.company_id).any():
+        _fail("baseline.monthly.company_id", "must match baseline.company_id")
+    first = monthly["timestamp"].iloc[0].date()
+    if first != _months_after(b.history_end, 1):
+        _fail("baseline.monthly.timestamp", "must start one month after history_end")
+    for key, col in (
+        ("revenue_gbp", "revenue_gbp"),
+        ("operating_profit_gbp", "operating_profit_gbp"),
+        ("total_co2e_tco2e", "total_co2e_tco2e"),
     ):
-        _first_bad(f"{field}.{name}", months, col(name) < 0.0, "must be >= 0")
-    for name in ("renewable_energy_share", "ev_share"):
-        values = col(name)
-        _first_bad(
-            f"{field}.{name}",
-            months,
-            (values < 0.0) | (values > 1.0),
-            "must be a fraction within [0, 1] (0-100 percentages are not accepted)",
-        )
+        if key not in b.totals:
+            _fail(f"baseline.totals.{key}", "is required")
+        total = require_finite(f"baseline.totals.{key}", b.totals[key])
+        atol = SCOPE_ATOL_TCO2E if key.endswith("tco2e") else CURRENCY_ATOL_GBP
+        if not math.isclose(total, float(monthly[col].sum()), rel_tol=SCOPE_RTOL, abs_tol=atol):
+            _fail(f"baseline.totals.{key}", "must equal the sum of monthly values")
+    return b
 
-    total = col("total_co2e_tco2e")
-    scope_sum = col("scope1_tco2e") + col("scope2_tco2e") + col("scope3_tco2e")
-    _first_bad(
-        f"{field}.total_co2e_tco2e",
-        months,
-        np.abs(total - scope_sum) > EMISSIONS_ATOL_TCO2E + EMISSIONS_RTOL * np.abs(total),
-        "must equal scope1 + scope2 + scope3 within tolerance",
+
+def validate_action_config(config: ActionConfig, field: str = "config") -> ActionConfig:
+    if not isinstance(config, ActionConfig):
+        _fail(field, "must be an ActionConfig")
+    for name in ACTION_NAMES:
+        require_ratio(f"{field}.{name}", getattr(config, name))
+    return config
+
+
+def validate_constraints(c: ConstraintConfig) -> ConstraintConfig:
+    if not isinstance(c, ConstraintConfig):
+        _fail("constraints", "must be a ConstraintConfig")
+    if require_finite("constraints.budget_gbp", c.budget_gbp) < 0:
+        _fail("constraints.budget_gbp", "must be >= 0")
+    require_finite("constraints.min_total_profit_gbp", c.min_total_profit_gbp)
+    require_ratio("constraints.min_co2_reduction_ratio", c.min_co2_reduction_ratio)
+    return c
+
+
+def validate_constraints_for_baseline(c: ConstraintConfig, baseline: BaselineBundle) -> ConstraintConfig:
+    """Zero baseline CO2 with a positive ratio target is undefined (SHARED_CONTRACTS.md s4)."""
+    validate_constraints(c)
+    if float(baseline.totals["total_co2e_tco2e"]) == 0.0 and c.min_co2_reduction_ratio > 0:
+        _fail(
+            "constraints.min_co2_reduction_ratio",
+            "ratio target is undefined because baseline horizon CO2 is zero",
+        )
+    return c
+
+
+def validate_optimizer_config(c: OptimizerConfig) -> OptimizerConfig:
+    if not isinstance(c, OptimizerConfig):
+        _fail("optimizer_config", "must be an OptimizerConfig")
+    if isinstance(c.seed, bool) or not isinstance(c.seed, (int, np.integer)):
+        _fail("optimizer_config.seed", "must be an int")
+    if c.seed < 0:
+        _fail("optimizer_config.seed", "must be >= 0 (NumPy/pymoo seeds are nonnegative)")
+    require_positive_int("optimizer_config.population_size", c.population_size)
+    require_positive_int("optimizer_config.generations", c.generations)
+    require_positive_int("optimizer_config.max_evaluations", c.max_evaluations)
+    return c
+
+
+def validate_risk_config(c: RiskConfig) -> RiskConfig:
+    if isinstance(c.seed, bool) or not isinstance(c.seed, int):
+        _fail("risk_config.seed", "must be an int")
+    n = require_positive_int("risk_config.n_simulations", c.n_simulations)
+    if n > MAX_RISK_SIMULATIONS:
+        _fail("risk_config.n_simulations", f"must be <= {MAX_RISK_SIMULATIONS}")
+    if not isinstance(c.retain_samples, bool):
+        _fail("risk_config.retain_samples", "must be a bool")
+    return c
+
+
+def validate_assumptions(a: ActionAssumptions) -> ActionAssumptions:
+    if not isinstance(a, ActionAssumptions):
+        _fail("assumptions", "must be ActionAssumptions")
+    require_nonempty_str("assumptions.assumptions_id", a.assumptions_id)
+    require_nonempty_str("assumptions.version", a.version)
+    if not isinstance(a.is_calibrated, bool):
+        _fail("assumptions.is_calibrated", "must be a bool")
+    for name in ASSUMPTION_SCALAR_FIELDS:
+        if require_finite(f"assumptions.{name}", getattr(a, name)) < 0:
+            _fail(f"assumptions.{name}", "must be >= 0")
+    ratio_fields = (
+        "gas_share", "ice_fleet_share", "travel_share", "cloud_share", "supplier_share",
+        "other_share", "building_electricity_share", "building_gas_share",
+        "building_max_reduction", "cloud_max_reduction", "supplier_max_reduction",
+        "renewable_effectiveness", "ev_effectiveness", "travel_effectiveness",
     )
-
-    totals = baseline.totals
-    if abs(math.fsum(col("revenue_gbp")) - totals.revenue_gbp) > CURRENCY_ATOL_GBP:
-        raise ContractValidationError("baseline.totals.revenue_gbp", "must equal the sum of monthly revenue_gbp")
-    if abs(math.fsum(col("operating_profit_gbp")) - totals.operating_profit_gbp) > CURRENCY_ATOL_GBP:
-        raise ContractValidationError(
-            "baseline.totals.operating_profit_gbp", "must equal the sum of monthly operating_profit_gbp"
-        )
-    if abs(math.fsum(total) - totals.total_co2e_tco2e) > emissions_tolerance(totals.total_co2e_tco2e):
-        raise ContractValidationError("baseline.totals.total_co2e_tco2e", "must equal the sum of monthly total_co2e_tco2e")
-    return baseline
-
-
-# ---------------------------------------------------------------------------
-# SimulationResult
-# ---------------------------------------------------------------------------
-
-_NONNEGATIVE_SIMULATION_COLUMNS = (
-    "scope1_tco2e",
-    "scope2_tco2e",
-    "scope3_tco2e",
-    "total_co2e_tco2e",
-    "capex_gbp",
-    "incremental_opex_gbp",
-    "operating_savings_gbp",
-    "depreciation_gbp",
-    "budget_cost_gbp",
-)
+    for name in ratio_fields:
+        require_ratio(f"assumptions.{name}", getattr(a, name))
+    if not math.isclose(a.gas_share + a.ice_fleet_share, 1.0, abs_tol=1e-9):
+        _fail("assumptions.gas_share", "scope1 partition gas_share + ice_fleet_share must equal 1")
+    s3 = a.travel_share + a.cloud_share + a.supplier_share + a.other_share
+    if not math.isclose(s3, 1.0, abs_tol=1e-9):
+        _fail("assumptions.travel_share", "scope3 partition shares must sum to 1")
+    if set(a.costs) != set(ACTION_NAMES):
+        _fail("assumptions.costs", f"must contain exactly the six actions {list(ACTION_NAMES)}")
+    for name, cost in a.costs.items():
+        for f in ("capex_at_full_gbp", "monthly_opex_at_full_gbp"):
+            if require_finite(f"assumptions.costs.{name}.{f}", getattr(cost, f)) < 0:
+                _fail(f"assumptions.costs.{name}.{f}", "must be >= 0")
+        require_positive_int(f"assumptions.costs.{name}.asset_life_months", cost.asset_life_months)
+    return a
 
 
-def validate_simulation_result(result: Any, *, expected_months: int | None = None) -> SimulationResult:
-    """Validate schema, nonnegativity and metric/monthly reconciliation of a SimulationResult."""
-    _require_instance("simulation", result, SimulationResult)
-    validate_schema_version("simulation.schema_version", result.schema_version)
-    require_str("simulation.run_id", result.run_id)
-    validate_provenance(result.provenance, "simulation.provenance")
-    require_str("simulation.baseline_id", result.baseline_id)
-    strategy_id = require_str("simulation.strategy_id", result.strategy_id)
-    if not strategy_id.startswith("strategy-"):
-        raise ContractValidationError("simulation.strategy_id", f"must start with 'strategy-'; got {strategy_id!r}")
-    validate_action_config(result.config, "simulation.config")
-    _require_instance("simulation.metrics", result.metrics, SimulationMetrics)
+def _validate_metrics(metrics: Mapping[str, Any], field: str) -> None:
+    for name in SIMULATION_METRIC_FIELDS:
+        if name not in metrics:
+            _fail(f"{field}.{name}", "is required")
+        value = metrics[name]
+        if value is None:
+            if name not in NULLABLE_METRIC_FIELDS:
+                _fail(f"{field}.{name}", "must not be null")
+            continue
+        require_finite(f"{field}.{name}", value)
 
-    monthly = result.monthly
-    _require_columns("simulation.monthly", monthly, SIMULATION_MONTHLY_COLUMNS)
-    if expected_months is not None and len(monthly) != expected_months:
-        raise ContractValidationError("simulation.monthly", f"expected {expected_months} rows; got {len(monthly)}")
-    if len(monthly) == 0:
-        raise ContractValidationError("simulation.monthly", "must contain at least one month")
-    months = _month_starts("simulation.monthly.timestamp", monthly["timestamp"])
-    block = _numeric_block("simulation.monthly", monthly, _SIMULATION_NUMERIC)
 
-    def col(name: str) -> np.ndarray:
-        return block[:, _SIMULATION_INDEX[name]]
+def validate_simulation_result(r: SimulationResult, baseline: BaselineBundle | None = None) -> SimulationResult:
+    if not isinstance(r, SimulationResult):
+        _fail("simulation", "must be a SimulationResult")
+    _validate_common(r, "simulation")
+    require_nonempty_str("simulation.baseline_id", r.baseline_id)
+    if not str(r.strategy_id).startswith(STRATEGY_ID_PREFIX):
+        _fail("simulation.strategy_id", f"must start with {STRATEGY_ID_PREFIX!r}")
+    validate_action_config(r.config, "simulation.config")
+    monthly = _require_columns(r.monthly, SIMULATION_MONTHLY_COLUMNS, "simulation.monthly")
+    _require_monthly_dates(monthly, "simulation.monthly")
+    _require_finite_columns(monthly, SIMULATION_MONTHLY_COLUMNS[1:], "simulation.monthly")
+    for col in (*SCOPE_COLUMNS, "total_co2e_tco2e", "capex_gbp", "incremental_opex_gbp",
+                "operating_savings_gbp", "depreciation_gbp", "budget_cost_gbp"):
+        if (monthly[col] < -SCOPE_ATOL_TCO2E).any():
+            _fail(f"simulation.monthly.{col}", "must be >= 0")
+    scope_sum = monthly[list(SCOPE_COLUMNS)].sum(axis=1).to_numpy()
+    if not np.allclose(scope_sum, monthly["total_co2e_tco2e"].to_numpy(), rtol=SCOPE_RTOL, atol=SCOPE_ATOL_TCO2E):
+        _fail("simulation.monthly.total_co2e_tco2e", "must equal the sum of scopes")
+    _validate_metrics(r.metrics, "simulation.metrics")
+    sums = {
+        "total_co2e_tco2e": ("total_co2e_tco2e", SCOPE_ATOL_TCO2E),
+        "total_profit_gbp": ("operating_profit_gbp", CURRENCY_ATOL_GBP),
+        "total_cost_gbp": ("budget_cost_gbp", CURRENCY_ATOL_GBP),
+        "total_capex_gbp": ("capex_gbp", CURRENCY_ATOL_GBP),
+    }
+    for metric, (col, atol) in sums.items():
+        if not math.isclose(float(r.metrics[metric]), float(monthly[col].sum()), rel_tol=SCOPE_RTOL, abs_tol=atol):
+            _fail(f"simulation.metrics.{metric}", f"must equal the horizon sum of monthly {col}")
+    if baseline is not None:
+        if r.baseline_id != baseline.baseline_id:
+            _fail("simulation.baseline_id", "does not match the baseline")
+        if len(monthly) != len(baseline.monthly) or not (
+            monthly["timestamp"].to_numpy() == baseline.monthly["timestamp"].to_numpy()
+        ).all():
+            _fail("simulation.monthly.timestamp", "must equal the baseline dates in the same order")
+    return r
 
-    for name in _NONNEGATIVE_SIMULATION_COLUMNS:
-        _first_bad(f"simulation.monthly.{name}", months, col(name) < 0.0, "must be >= 0")
 
-    metrics = result.metrics
-    checks = (
-        ("total_co2e_tco2e", "total_co2e_tco2e", None),
-        ("total_profit_gbp", "operating_profit_gbp", CURRENCY_ATOL_GBP),
-        ("total_cost_gbp", "budget_cost_gbp", CURRENCY_ATOL_GBP),
-        ("total_capex_gbp", "capex_gbp", CURRENCY_ATOL_GBP),
-        ("total_incremental_opex_gbp", "incremental_opex_gbp", CURRENCY_ATOL_GBP),
-        ("total_operating_savings_gbp", "operating_savings_gbp", CURRENCY_ATOL_GBP),
-        ("net_cash_impact_gbp", "net_cash_impact_gbp", CURRENCY_ATOL_GBP),
+def _validate_table(frame: pd.DataFrame, field: str) -> None:
+    _require_columns(frame, OPTIMIZATION_TABLE_COLUMNS, field)
+    if len(frame) == 0:
+        return
+    _require_finite_columns(
+        frame,
+        [*ACTION_NAMES, "total_co2e_tco2e", "total_profit_gbp", "total_cost_gbp", "g_budget", "g_profit", "g_target"],
+        field,
     )
-    for metric_name, column, tolerance in checks:
-        metric = getattr(metrics, metric_name)
-        tol = emissions_tolerance(metric) if tolerance is None else tolerance
-        if abs(math.fsum(col(column)) - metric) > tol:
-            raise ContractValidationError(f"simulation.metrics.{metric_name}", f"must equal the sum of monthly {column}")
-    baseline_co2 = metrics.baseline_total_co2e_tco2e
-    if abs(baseline_co2 - metrics.total_co2e_tco2e - metrics.co2_reduction_tco2e) > emissions_tolerance(baseline_co2):
-        raise ContractValidationError("simulation.metrics.co2_reduction_tco2e", "must equal baseline minus scenario CO2e")
-    if (baseline_co2 == 0.0) != (metrics.co2_reduction_ratio is None):
-        raise ContractValidationError(
-            "simulation.metrics.co2_reduction_ratio", "must be null exactly when baseline CO2e is zero"
-        )
-    if (metrics.baseline_total_profit_gbp == 0.0) != (metrics.profit_change_ratio is None):
-        raise ContractValidationError(
-            "simulation.metrics.profit_change_ratio", "must be null exactly when baseline profit is zero"
-        )
-    return result
+    if not pd.api.types.is_bool_dtype(frame["feasible"]):
+        _fail(f"{field}.feasible", f"must be bool, got {frame['feasible'].dtype}")
+    if not pd.api.types.is_integer_dtype(frame["pareto_rank"]):
+        _fail(f"{field}.pareto_rank", f"must be int, got {frame['pareto_rank'].dtype}")
+    if frame["strategy_id"].duplicated().any():
+        _fail(f"{field}.strategy_id", "must be unique")
 
 
-# ---------------------------------------------------------------------------
-# Candidate / Pareto tables
-# ---------------------------------------------------------------------------
+def validate_optimization_result(r: OptimizationResult) -> OptimizationResult:
+    if not isinstance(r, OptimizationResult):
+        _fail("optimization", "must be an OptimizationResult")
+    _validate_common(r, "optimization")
+    if r.status not in OPTIMIZATION_STATUSES:
+        _fail("optimization.status", f"must be one of {list(OPTIMIZATION_STATUSES)}")
+    validate_constraints(r.constraints)
+    _validate_table(r.candidates, "optimization.candidates")
+    _validate_table(r.pareto, "optimization.pareto")
+    if r.status == "ok" and len(r.pareto) == 0:
+        _fail("optimization.pareto", "status 'ok' requires at least one feasible Pareto point")
+    if r.status == "infeasible" and len(r.pareto) > 0:
+        _fail("optimization.pareto", "status 'infeasible' requires an empty Pareto frontier")
+    if len(r.pareto):
+        if not r.pareto["feasible"].all():
+            _fail("optimization.pareto.feasible", "every Pareto point must be feasible")
+        if not (r.pareto["pareto_rank"] == 0).all():
+            _fail("optimization.pareto.pareto_rank", "every Pareto point must have rank 0")
+    for table_name, table in (("candidates", r.candidates), ("pareto", r.pareto)):
+        for _, row in table.iterrows():
+            sid = row["strategy_id"]
+            if sid not in r.strategies:
+                _fail(f"optimization.{table_name}.strategy_id", f"{sid!r} has no entry in strategies")
+            stored = r.strategies[sid]
+            if stored.strategy_id != sid:
+                _fail("optimization.strategies", f"key {sid!r} maps to result {stored.strategy_id!r}")
+            for name in ACTION_NAMES:
+                if float(row[name]) != float(getattr(stored.config, name)):
+                    _fail(f"optimization.{table_name}.{name}", f"row for {sid!r} differs from the stored exact config")
+    for sid, sim in r.strategies.items():
+        validate_simulation_result(sim)
+        if sim.baseline_id != r.baseline_id:
+            _fail("optimization.strategies", f"{sid!r} has a different baseline_id")
+    return r
 
 
-def normalize_candidate_frame(frame: Any, field: str = "candidates", *, require_rank: bool = True) -> pd.DataFrame:
-    """Validate a candidates/Pareto table and return a typed copy in canonical column order.
-
-    ``pareto_rank`` may be omitted when ``require_rank`` is false (it is an output column).
-    """
-    columns = CANDIDATE_COLUMNS if require_rank else tuple(c for c in CANDIDATE_COLUMNS if c[0] != "pareto_rank")
-    _require_columns(field, frame, columns)
-    if len(frame) == 0:  # nothing to validate; always hand back the typed empty schema
-        return pd.DataFrame({name: pd.Series(dtype=_EMPTY_DTYPES[kind]) for name, kind in CANDIDATE_COLUMNS})
-    data: dict[str, Any] = {}
-
-    ids = frame["strategy_id"].to_numpy(dtype=object)
-    if not all(isinstance(value, str) and value.strip() for value in ids):
-        raise ContractValidationError(f"{field}.strategy_id", "must contain nonempty strings")
-    data["strategy_id"] = pd.Series(ids, dtype=object, copy=True)
-
-    float_names = tuple(name for name, kind in columns if kind == "float")
-    block = _numeric_block(field, frame, float_names)
-    for i, name in enumerate(float_names):
-        data[name] = block[:, i]
-    actions = block[:, : len(ACTION_NAMES)]
-    if ((actions < 0.0) | (actions > 1.0)).any():
-        raise ContractValidationError(field, "action columns must be fractions within [0, 1]")
-    if (data["total_cost_gbp"] < 0.0).any():
-        raise ContractValidationError(f"{field}.total_cost_gbp", "must be >= 0")
-
-    ratio_series = frame["co2_reduction_ratio"]
-    numeric_dtype = pd.api.types.is_numeric_dtype(ratio_series.dtype) and not pd.api.types.is_bool_dtype(
-        ratio_series.dtype
-    )
-    if not numeric_dtype and not all(
-        value is None or (isinstance(value, (int, float, np.number)) and not isinstance(value, (bool, np.bool_)))
-        for value in ratio_series.to_numpy(dtype=object)
-    ):
-        raise ContractValidationError(f"{field}.co2_reduction_ratio", "must be numeric or null")
-    ratio = pd.to_numeric(ratio_series, errors="raise").to_numpy(dtype=np.float64, na_value=np.nan)
-    if np.isinf(ratio).any():
-        raise ContractValidationError(f"{field}.co2_reduction_ratio", "must be finite or null")
-    data["co2_reduction_ratio"] = ratio
-
-    feasible = frame["feasible"]
-    if not pd.api.types.is_bool_dtype(feasible.dtype):
-        raise ContractValidationError(f"{field}.feasible", f"must be boolean; got dtype {feasible.dtype}")
-    data["feasible"] = feasible.to_numpy(dtype=bool, copy=True)
-
-    if require_rank:
-        rank = frame["pareto_rank"]
-        if not pd.api.types.is_integer_dtype(rank.dtype) or pd.api.types.is_bool_dtype(rank.dtype):
-            raise ContractValidationError(f"{field}.pareto_rank", f"must be integer; got dtype {rank.dtype}")
-        data["pareto_rank"] = rank.to_numpy(dtype=np.int64, copy=True)
-    else:
-        data["pareto_rank"] = np.full(len(frame), -1, dtype=np.int64)
-
-    ordered = {name: data[name] for name, _ in CANDIDATE_COLUMNS}
-    return pd.DataFrame(ordered).reset_index(drop=True)
+def validate_recommendation(rec: RecommendationResult, optimization: OptimizationResult | None = None) -> RecommendationResult:
+    if not isinstance(rec, RecommendationResult):
+        _fail("recommendation", "must be a RecommendationResult")
+    _validate_common(rec, "recommendation")
+    if rec.tolerance not in TOLERANCES:
+        _fail("recommendation.tolerance", f"must be one of {list(TOLERANCES)}")
+    if rec.risk_status not in RISK_STATUSES:
+        _fail("recommendation.risk_status", f"must be one of {list(RISK_STATUSES)}")
+    if rec.score is not None:
+        require_finite("recommendation.score", rec.score)
+    if optimization is not None:
+        if optimization.status == "infeasible" and rec.strategy_id is not None:
+            _fail("recommendation.strategy_id", "must be null when optimization is infeasible")
+        if optimization.status == "ok":
+            if rec.strategy_id is None:
+                _fail("recommendation.strategy_id", "must be set when a feasible frontier exists")
+            if rec.strategy_id not in set(optimization.pareto["strategy_id"]):
+                _fail("recommendation.strategy_id", "must be a validated feasible Pareto strategy")
+    return rec
 
 
-# ---------------------------------------------------------------------------
-# RiskResult (produced by WS3, consumed by WS2 recommendation)
-# ---------------------------------------------------------------------------
+def validate_risk_result(r: RiskResult) -> RiskResult:
+    _validate_common(r, "risk")
+    require_nonempty_str("risk.strategy_id", r.strategy_id)
+    require_positive_int("risk.n_simulations", r.n_simulations)
+    require_nonempty_str("risk.uncertainty_id", r.uncertainty_id)
+    for name in RISK_SUMMARY_FIELDS:
+        if name not in r.summary:
+            _fail(f"risk.summary.{name}", "is required")
+        value = r.summary[name]
+        if value is None:
+            # Only probabilities tied to an undefined ratio may be null, and the target
+            # probability's standard error with it (no zero-filled errors, DATA_SCHEMAS.md s9).
+            se_of_undefined_target = name == "target_probability_mc_standard_error" and r.summary["target_probability"] is None
+            if not (name.endswith("probability") or se_of_undefined_target):
+                _fail(f"risk.summary.{name}", "must not be null")
+            continue
+        v = require_finite(f"risk.summary.{name}", value)
+        if name.endswith("probability") and not 0 <= v <= 1:
+            _fail(f"risk.summary.{name}", "probability must be within [0, 1]")
+    s = r.summary
+    for lo, hi in (("co2_p05_tco2e", "co2_p95_tco2e"), ("profit_p05_gbp", "profit_p95_gbp")):
+        if s[lo] > s[hi]:
+            _fail(f"risk.summary.{lo}", f"must be <= {hi}")
+    return r
 
 
-def validate_risk_result(result: Any, field: str = "risk_result") -> RiskResult:
-    _require_instance(field, result, RiskResult)
-    validate_schema_version(f"{field}.schema_version", result.schema_version)
-    require_str(f"{field}.run_id", result.run_id)
-    validate_provenance(result.provenance, f"{field}.provenance")
-    require_str(f"{field}.strategy_id", result.strategy_id)
-    require_str(f"{field}.baseline_id", result.baseline_id)
-    require_str(f"{field}.uncertainty_id", result.uncertainty_id)
-    require_int(f"{field}.n_simulations", result.n_simulations, minimum=1)
-    summary = result.summary
-    _require_instance(f"{field}.summary", summary, RiskSummary)
-    if summary.co2_p05_tco2e > summary.co2_p95_tco2e:
-        raise ContractValidationError(f"{field}.summary.co2_p05_tco2e", "must be <= co2_p95_tco2e")
-    if summary.profit_p05_gbp > summary.profit_p95_gbp:
-        raise ContractValidationError(f"{field}.summary.profit_p05_gbp", "must be <= profit_p95_gbp")
-    if result.samples is not None:
-        _require_instance(f"{field}.samples", result.samples, pd.DataFrame)
-    return result
+def validate_benchmark_result(b: BenchmarkResult) -> BenchmarkResult:
+    _validate_common(b, "benchmark")
+    if b.status not in BENCHMARK_STATUSES:
+        _fail("benchmark.status", f"must be one of {list(BENCHMARK_STATUSES)}")
+    if b.status == "unavailable":
+        require_nonempty_str("benchmark.reason", b.reason)
+        return b
+    for name in ("company_intensity_tco2e_per_million_gbp", "industry_median", "percentile", "better_than_pct"):
+        require_finite(f"benchmark.{name}", getattr(b, name))
+    for name in ("percentile", "better_than_pct"):
+        if not 0 <= getattr(b, name) <= 100:
+            _fail(f"benchmark.{name}", "must be within [0, 100]")
+    if not math.isclose(b.percentile + b.better_than_pct, 100.0, abs_tol=1e-9):
+        _fail("benchmark.better_than_pct", "must equal 100 - percentile")
+    require_positive_int("benchmark.peer_count", b.peer_count)
+    return b
+
+
+def validate_backtest_report(r: BacktestReport) -> BacktestReport:
+    _validate_common(r, "backtest")
+    require_nonempty_str("backtest.model_family", r.model_family)
+    _require_columns(r.folds, BACKTEST_FOLD_COLUMNS, "backtest.folds")
+    oof = _require_columns(r.oof_predictions, BACKTEST_OOF_COLUMNS, "backtest.oof_predictions")
+    if len(oof):
+        _require_finite_columns(oof, ["actual", "predicted", "naive_predicted"], "backtest.oof_predictions")
+        if not set(oof["target"]).issubset(FORECAST_TARGETS):
+            _fail("backtest.oof_predictions.target", f"must be one of {list(FORECAST_TARGETS)}")
+    for target, metrics in r.aggregate_metrics.items():
+        if target not in FORECAST_TARGETS:
+            _fail("backtest.aggregate_metrics", f"unknown target {target!r}")
+        for name in ("mae", "rmse", "naive_mae", "naive_rmse"):
+            if name not in metrics:
+                _fail(f"backtest.aggregate_metrics.{target}.{name}", "is required")
+            if require_finite(f"backtest.aggregate_metrics.{target}.{name}", metrics[name]) < 0:
+                _fail(f"backtest.aggregate_metrics.{target}.{name}", "must be >= 0")
+        if metrics.get("r2") is not None:
+            require_finite(f"backtest.aggregate_metrics.{target}.r2", metrics["r2"])
+    return r
+
+
+def validate_explanation(e: ExplanationResult) -> ExplanationResult:
+    _validate_common(e, "explanation")
+    if e.output_space != "raw_model":
+        _fail("explanation.output_space", "must be 'raw_model'")
+    frame = _require_columns(e.contributions, SHAP_COLUMNS, "explanation.contributions")
+    if len(frame):
+        _require_finite_columns(frame, ["shap_value", "base_value", "model_prediction"], "explanation.contributions")
+    for target in set(frame["target"]):
+        if target not in e.units:
+            _fail("explanation.units", f"missing unit for target {target!r}")
+    return e
+
+
+def validate_analysis_request(req: AnalysisRequest, supported_horizons: tuple[int, ...] | None = None) -> AnalysisRequest:
+    if not isinstance(req, AnalysisRequest):
+        _fail("request", "must be an AnalysisRequest")
+    require_nonempty_str("request.company_id", req.company_id)
+    validate_horizon(req.horizon_months, supported_horizons)
+    validate_constraints(req.constraints)
+    validate_optimizer_config(req.optimizer_config)
+    validate_risk_config(req.risk_config)
+    if req.tolerance not in TOLERANCES:
+        _fail("request.tolerance", f"must be one of {list(TOLERANCES)}")
+    for name in ("risk_enabled", "benchmark_enabled", "explanation_enabled"):
+        if not isinstance(getattr(req, name), bool):
+            _fail(f"request.{name}", "must be a bool")
+    return req

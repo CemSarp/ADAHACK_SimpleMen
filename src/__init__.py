@@ -1,1 +1,1 @@
-"""CarbonOpt AI application package (contract 1.0.0)."""
+"""CarbonOpt AI application package."""

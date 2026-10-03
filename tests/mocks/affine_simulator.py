@@ -19,13 +19,12 @@ import numpy as np
 import pandas as pd
 
 from src.actions.definitions import compute_strategy_id
-from src.contracts import (
+from src.contracts.types import (
     SCHEMA_VERSION,
     ActionAssumptions,
     ActionConfig,
     BaselineBundle,
     Provenance,
-    SimulationMetrics,
     SimulationResult,
 )
 
@@ -41,8 +40,8 @@ def affine_simulator(baseline: BaselineBundle, config: ActionConfig, *, assumpti
         - 0.1 * config.ev_adoption * assumptions.ev_effectiveness
     )
     cost = (
-        assumptions.costs.renewable_energy.capex_at_full_gbp * config.renewable_energy
-        + assumptions.costs.ev_adoption.capex_at_full_gbp * config.ev_adoption
+        assumptions.costs["renewable_energy"].capex_at_full_gbp * config.renewable_energy
+        + assumptions.costs["ev_adoption"].capex_at_full_gbp * config.ev_adoption
     )
     profit_charge = np.full(n, 0.01 * cost / n)
     capex = np.zeros(n)
@@ -68,21 +67,21 @@ def affine_simulator(baseline: BaselineBundle, config: ActionConfig, *, assumpti
     baseline_profit = math.fsum(monthly["operating_profit_gbp"])
     total_co2 = math.fsum(frame["total_co2e_tco2e"])
     total_profit = math.fsum(frame["operating_profit_gbp"])
-    metrics = SimulationMetrics(
-        baseline_total_co2e_tco2e=baseline_co2,
-        total_co2e_tco2e=total_co2,
-        co2_reduction_tco2e=baseline_co2 - total_co2,
-        co2_reduction_ratio=None if baseline_co2 == 0 else (baseline_co2 - total_co2) / baseline_co2,
-        baseline_total_profit_gbp=baseline_profit,
-        total_profit_gbp=total_profit,
-        profit_change_gbp=total_profit - baseline_profit,
-        profit_change_ratio=None if baseline_profit == 0 else (total_profit - baseline_profit) / abs(baseline_profit),
-        total_cost_gbp=cost,
-        total_capex_gbp=cost,
-        total_incremental_opex_gbp=0.0,
-        total_operating_savings_gbp=0.0,
-        net_cash_impact_gbp=-cost,
-    )
+    metrics = {
+        "baseline_total_co2e_tco2e": baseline_co2,
+        "total_co2e_tco2e": total_co2,
+        "co2_reduction_tco2e": baseline_co2 - total_co2,
+        "co2_reduction_ratio": None if baseline_co2 == 0 else (baseline_co2 - total_co2) / baseline_co2,
+        "baseline_total_profit_gbp": baseline_profit,
+        "total_profit_gbp": total_profit,
+        "profit_change_gbp": total_profit - baseline_profit,
+        "profit_change_ratio": None if baseline_profit == 0 else (total_profit - baseline_profit) / abs(baseline_profit),
+        "total_cost_gbp": cost,
+        "total_capex_gbp": cost,
+        "total_incremental_opex_gbp": 0.0,
+        "total_operating_savings_gbp": 0.0,
+        "net_cash_impact_gbp": -cost,
+    }
     strategy_id = compute_strategy_id(baseline.baseline_id, config, assumptions)
     return SimulationResult(
         schema_version=SCHEMA_VERSION,

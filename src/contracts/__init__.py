@@ -1,64 +1,57 @@
-"""Public contract 1.0.0 surface: types, errors, protocols, validation and serialization.
+"""Public contracts (version 1.0.0). Consumers import from here.
 
-Shared C0 foundation (WS4 steward). This package currently holds only the subset that
-WS2 needs; other workstreams extend it through contract PRs rather than private schemas.
+Importing this package must not require Streamlit, optional libraries, model
+files or network access.
 """
 
-from src.contracts.errors import ContractValidationError, OptimizationError
-from src.contracts.protocols import SimulationFn
-from src.contracts.types import (
+from .errors import (
+    CapabilityUnavailable,
+    CarbonOptError,
+    ContractValidationError,
+    ForecastConfigurationError,
+    ForecastError,
+    OptimizationError,
+    ProviderConfigurationError,
+    ProviderError,
+    RiskError,
+    SimulationError,
+    UnsupportedHorizon,
+    UnsupportedMockInput,
+)
+from .identity import canonical_hash, compute_strategy_id, config_from_row
+from .protocols import (
+    BenchmarkProvider,
+    ExplanationProvider,
+    ForecastProvider,
+    NarrativeProvider,
+    OptimizerProvider,
+    RiskProvider,
+    SimulationFn,
+    SimulatorProvider,
+)
+from .types import (
     ACTION_NAMES,
-    BASELINE_MONTHLY_COLUMNS,
-    CANDIDATE_COLUMNS,
     SCHEMA_VERSION,
-    SIMULATION_MONTHLY_COLUMNS,
-    SUPPORTED_BASELINE_HORIZONS,
     ActionAssumptions,
     ActionConfig,
     ActionCost,
-    ActionCosts,
+    AnalysisBundle,
+    AnalysisRequest,
+    BacktestReport,
     BaselineBundle,
-    BaselineTotals,
+    BenchmarkResult,
+    Capabilities,
     ConstraintConfig,
     ConstraintEvaluation,
-    ConstraintSatisfaction,
+    ExplanationResult,
     OptimizationResult,
     OptimizerConfig,
     Provenance,
-    RawViolations,
+    ProviderInfo,
     RecommendationResult,
+    RiskConfig,
     RiskResult,
-    RiskSummary,
-    SimulationMetrics,
     SimulationResult,
 )
 
-__all__ = [
-    "ACTION_NAMES",
-    "BASELINE_MONTHLY_COLUMNS",
-    "CANDIDATE_COLUMNS",
-    "SCHEMA_VERSION",
-    "SIMULATION_MONTHLY_COLUMNS",
-    "SUPPORTED_BASELINE_HORIZONS",
-    "ActionAssumptions",
-    "ActionConfig",
-    "ActionCost",
-    "ActionCosts",
-    "BaselineBundle",
-    "BaselineTotals",
-    "ConstraintConfig",
-    "ConstraintEvaluation",
-    "ConstraintSatisfaction",
-    "ContractValidationError",
-    "OptimizationError",
-    "OptimizationResult",
-    "OptimizerConfig",
-    "Provenance",
-    "RawViolations",
-    "RecommendationResult",
-    "RiskResult",
-    "RiskSummary",
-    "SimulationFn",
-    "SimulationMetrics",
-    "SimulationResult",
-]
+__all__ = [name for name in dir() if not name.startswith("_")]

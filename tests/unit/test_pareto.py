@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.contracts import CANDIDATE_COLUMNS, ContractValidationError
+from src.contracts.types import OPTIMIZATION_TABLE_COLUMNS
+from src.contracts import ContractValidationError
 from src.optimization.pareto import (
     PROFIT_ABS_TOLERANCE_GBP,
     assign_pareto_ranks,
@@ -104,7 +105,7 @@ def test_empty_and_all_infeasible_inputs_give_typed_empty_frames():
     all_infeasible = compute_pareto_frontier(candidate_table(infeasible("strategy-a", 1.0, 1.0)))
     for frame in (empty, all_infeasible):
         assert len(frame) == 0
-        assert list(frame.columns) == [name for name, _ in CANDIDATE_COLUMNS]
+        assert list(frame.columns) == list(OPTIMIZATION_TABLE_COLUMNS)
         for column, dtype in EXPECTED_DTYPES.items():
             assert str(frame[column].dtype) == dtype
 

@@ -2,29 +2,34 @@
 
 Every action value is the fraction of the *remaining eligible opportunity* implemented in
 month 1 and held for the horizon (docs/ACTION_MODEL.md §1). The vector order is fixed by
-:data:`src.contracts.ACTION_NAMES`.
+:data:`src.contracts.ACTION_NAMES`. Types, validators and the canonical identity come from
+the shared contract package; this module only adds WS2 semantics on top of them.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 import numpy as np
 
-from src.contracts import (
-    ACTION_NAMES,
-    ActionAssumptions,
-    ActionConfig,
-    ActionCost,
-    ActionCosts,
-    ContractValidationError,
+from src.contracts import ACTION_NAMES, ActionAssumptions, ActionConfig, ActionCost, BaselineBundle
+from src.contracts import serialization as ser
+from src.contracts import validation as val
+from src.contracts.errors import ContractValidationError
+from src.contracts.identity import (
+    STRATEGY_ID_HEX_LENGTH,
+    STRATEGY_ID_PREFIX,
+    canonical_hash,
+    strategy_identity_payload,
 )
-from src.contracts._scalars import require_nonnegative, require_str, require_unit_interval
-from src.contracts.serialization import action_assumptions_from_dict, canonical_json, load_json
+from src.contracts.types import HISTORY_COLUMNS
+
+__version__ = "ws2-actions-1.1.0"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 #: Versioned illustrative (uncalibrated) assumptions owned by WS2.
@@ -89,42 +94,44 @@ ACTION_DEFINITIONS: tuple[ActionDefinition, ...] = (
 
 
 def load_action_assumptions(path: str | Path | None = None) -> ActionAssumptions:
-    """Load and strictly validate a versioned assumption file (default: config/action_assumptions.json)."""
-    return action_assumptions_from_dict(load_json(DEFAULT_ASSUMPTIONS_PATH if path is None else path))
+    """Load and validate a versioned assumption file (default: config/action_assumptions.json)."""
+    target = DEFAULT_ASSUMPTIONS_PATH if path is None else Path(path)
+    with open(target, encoding="utf-8") as handle:
+        return val.validate_assumptions(ser.assumptions_from_dict(json.load(handle)))
+
+
+def canonical_config(config: ActionConfig, field: str = "config") -> ActionConfig:
+    """Validated copy holding built-in floats, with ``-0.0`` normalised to ``0.0``.
+
+    Out-of-range, non-finite and non-numeric values are rejected, never clamped. Equal
+    configurations therefore always share one strategy identity.
+    """
+    val.validate_action_config(config, field)
+    return ActionConfig(*(float(value) + 0.0 for value in config.as_vector()))
 
 
 def config_to_vector(config: ActionConfig) -> np.ndarray:
     """Decision vector in canonical order (full precision)."""
-    return np.array(config.to_tuple(), dtype=np.float64)
+    return np.array(config.as_vector(), dtype=np.float64)
 
 
 def config_from_vector(values: Sequence[float] | np.ndarray) -> ActionConfig:
-    """Validated ActionConfig from a canonical-order vector; out-of-range values are rejected."""
-    return ActionConfig.from_sequence([float(v) for v in np.asarray(values, dtype=np.float64).ravel()])
+    """Validated ActionConfig from a canonical-order vector."""
+    vector = np.asarray(values, dtype=np.float64).ravel()
+    if vector.shape[0] != len(ACTION_NAMES):
+        raise ContractValidationError("config", f"expected {len(ACTION_NAMES)} values in canonical order; got {vector.shape[0]}")
+    return canonical_config(ActionConfig(*(float(v) for v in vector)))
 
 
 # ---------------------------------------------------------------------------
-# Strategy identity (ACTION_MODEL.md §6)
+# Strategy identity (ACTION_MODEL.md §6). The payload is the shared contract
+# definition; WS2 adds only truncated-ID collision handling.
 # ---------------------------------------------------------------------------
 
-STRATEGY_ID_PREFIX = "strategy-"
-STRATEGY_ID_HEX_LENGTH = 16
 
-
-def strategy_identity(
-    baseline_id: str, config: ActionConfig, *, assumptions_id: str, assumptions_version: str
-) -> str:
+def strategy_identity(baseline_id: str, config: ActionConfig, *, assumptions_id: str, assumptions_version: str) -> str:
     """Canonical identity: sorted-key compact JSON of baseline, full-precision config, assumptions."""
-    if not isinstance(config, ActionConfig):
-        raise ContractValidationError("config", f"expected ActionConfig; got {type(config).__name__}")
-    return canonical_json(
-        {
-            "baseline_id": require_str("baseline_id", baseline_id),
-            "config": {name: float(value) for name, value in config.to_dict().items()},
-            "assumptions_id": require_str("assumptions_id", assumptions_id),
-            "assumptions_version": require_str("assumptions_version", assumptions_version),
-        }
-    )
+    return strategy_identity_payload(baseline_id, config, assumptions_id, assumptions_version)
 
 
 def strategy_id_from_identity(identity: str, *, hex_length: int = STRATEGY_ID_HEX_LENGTH) -> str:
@@ -159,6 +166,34 @@ def assign_strategy_id(
 
 
 # ---------------------------------------------------------------------------
+# Content fingerprints for provenance input hashes
+# ---------------------------------------------------------------------------
+
+
+def baseline_fingerprint(baseline: BaselineBundle) -> str:
+    """SHA-256 over baseline metadata and the exact monthly values."""
+    header = {
+        name: getattr(baseline, name)
+        for name in ("schema_version", "run_id", "baseline_id", "company_id", "horizon_months", "model_id",
+                     "driver_policy_id", "data_kind", "scope2_method", "currency")
+    }
+    header["history_end"] = baseline.history_end.isoformat()
+    header["provenance"] = ser.provenance_to_dict(baseline.provenance)
+    header["totals"] = {key: float(value) for key, value in baseline.totals.items()}
+    digest = hashlib.sha256(canonical_hash(header).encode("utf-8"))
+    monthly = baseline.monthly
+    digest.update(monthly["timestamp"].to_numpy(dtype="datetime64[ns]").astype("<i8").tobytes())
+    numeric = [name for name in HISTORY_COLUMNS if name not in ("company_id", "timestamp")]
+    digest.update(np.ascontiguousarray(monthly[numeric].to_numpy(dtype="<f8")).tobytes())
+    digest.update("\x1f".join(str(v) for v in monthly["company_id"].tolist()).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def assumptions_fingerprint(assumptions: ActionAssumptions) -> str:
+    return canonical_hash(ser.assumptions_to_dict(assumptions))
+
+
+# ---------------------------------------------------------------------------
 # P1 uncertainty hook (RISK_AND_BENCHMARK_SPEC.md §1). Sampling itself belongs to WS3.
 # ---------------------------------------------------------------------------
 
@@ -174,7 +209,14 @@ _SCALED_EFFECTIVENESS = {
 }
 
 
-def _multipliers(field: str, values: Mapping[str, float] | None, validate: Callable[[str, float], float]) -> dict[str, float]:
+def _require_nonnegative(field: str, value: float) -> float:
+    number = val.require_finite(field, value)
+    if number < 0.0:
+        raise ContractValidationError(field, "must be >= 0")
+    return number
+
+
+def _multipliers(field: str, values: Mapping[str, float] | None, check: Callable[[str, float], float]) -> dict[str, float]:
     if values is None:
         return {}
     if not isinstance(values, Mapping):
@@ -182,7 +224,7 @@ def _multipliers(field: str, values: Mapping[str, float] | None, validate: Calla
     unknown = sorted(set(values) - set(ACTION_NAMES))
     if unknown:
         raise ContractValidationError(field, f"unknown action names {unknown}")
-    return {name: validate(f"{field}.{name}", value) for name, value in values.items()}
+    return {name: check(f"{field}.{name}", value) for name, value in values.items()}
 
 
 def apply_uncertainty_sample(
@@ -203,14 +245,13 @@ def apply_uncertainty_sample(
     copy's ``assumptions_id`` and must differ from the parent's, so sampled parameters never
     share a deterministic strategy identity. The deterministic accounting is unchanged.
     """
-    if not isinstance(assumptions, ActionAssumptions):
-        raise ContractValidationError("assumptions", f"expected ActionAssumptions; got {type(assumptions).__name__}")
-    sample_id = require_str("sample_id", sample_id)
+    val.validate_assumptions(assumptions)
+    sample_id = val.require_nonempty_str("sample_id", sample_id)
     if sample_id == assumptions.assumptions_id:
         raise ContractValidationError("sample_id", "must differ from the parent assumptions_id")
-    effectiveness = _multipliers("effectiveness_multipliers", effectiveness_multipliers, require_unit_interval)
-    capex = _multipliers("capex_multipliers", capex_multipliers, require_nonnegative)
-    opex = _multipliers("opex_multipliers", opex_multipliers, require_nonnegative)
+    effectiveness = _multipliers("effectiveness_multipliers", effectiveness_multipliers, val.require_ratio)
+    capex = _multipliers("capex_multipliers", capex_multipliers, _require_nonnegative)
+    opex = _multipliers("opex_multipliers", opex_multipliers, _require_nonnegative)
 
     updates: dict[str, float] = {}
     for name, multiplier in effectiveness.items():
@@ -223,10 +264,11 @@ def apply_uncertainty_sample(
             updates["supplier_monthly_savings_at_full_gbp"] = assumptions.supplier_monthly_savings_at_full_gbp * multiplier
     costs = {
         name: ActionCost(
-            capex_at_full_gbp=cost.capex_at_full_gbp * capex.get(name, 1.0),
-            monthly_opex_at_full_gbp=cost.monthly_opex_at_full_gbp * opex.get(name, 1.0),
-            asset_life_months=cost.asset_life_months,
+            capex_at_full_gbp=assumptions.costs[name].capex_at_full_gbp * capex.get(name, 1.0),
+            monthly_opex_at_full_gbp=assumptions.costs[name].monthly_opex_at_full_gbp * opex.get(name, 1.0),
+            asset_life_months=assumptions.costs[name].asset_life_months,
         )
-        for name, cost in assumptions.costs.items()
+        for name in ACTION_NAMES
     }
-    return dataclasses.replace(assumptions, assumptions_id=sample_id, costs=ActionCosts(**costs), **updates)
+    sampled = dataclasses.replace(assumptions, assumptions_id=sample_id, costs=costs, **updates)
+    return val.validate_assumptions(sampled)

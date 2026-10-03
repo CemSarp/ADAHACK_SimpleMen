@@ -1,62 +1,53 @@
-# WS2 Follow-ups After Merge
+# WS2 Follow-ups
 
-Open work for Workstream 2 (actions, optimization, Pareto, recommendation) as of commit `22cee48` on `workstream2`. Everything WS2 implemented is described in [WS2_HANDOFF.md](WS2_HANDOFF.md); this file lists only what is **not** done yet, so it can be picked up after `workstream2` is merged with the other workstreams.
+Open work for Workstream 2 (actions, optimization, Pareto, recommendation) after integrating with WS4 on `workstream2` (merge of `main`, pending review). [WS2_HANDOFF.md](WS2_HANDOFF.md) describes what works; this file lists what does not yet. Each item names its owner, what blocks it, and what counts as done.
 
-Each item names its owner, what blocks it, and what counts as done. Tick the box when finished.
+## Done during the WS2–WS4 integration
 
-## 1. Small WS2 items (no dependencies; can be done any time)
+- [x] One contract package: WS4's `src/contracts/` is the schema; WS2's stopgap copy was removed and WS2 code adapted.
+- [x] Real WS2 providers bound through WS4's registry; documented hybrid preset "Fixture forecast + real WS2".
+- [x] `pymoo==0.6.2` pinned in `requirements.txt`; `src.optimization` imports without pymoo.
+- [x] Single risk-pool rule (`risk_pool_from_frontier`) shared by the WS4 pipeline and the recommendation.
+- [x] `recommend_strategy(tolerance=...)` annotated with the contract's `Tolerance` literal.
+- [x] Cross-boundary integration tests and Streamlit AppTest coverage of the hybrid flow.
 
-- [ ] **Multi-point frontier fixture.** `carbonopt-ai-docs/examples/README.md` asks for one so WS4 can build the Pareto chart and dominance tests; the existing optimization fixtures have one and zero frontier points.
-  - Owner: WS2. Reviewer: WS4.
-  - Do: run a small seeded optimization on the fixture baseline (for example population 16, about 200 evaluations) and save it with `optimization_result_to_dict(result, strategies="frontier")` as `tests/fixtures/v1/optimization_multipoint.json`. Add a contract test that it parses, that every Pareto row is feasible and nondominated under `diagnostics.dominance_tolerances`, and that every Pareto `strategy_id` joins the `strategies` map.
-  - Done when: the fixture is committed, under about 300 KB, and tested.
-- [ ] **Engine-generated sample results for the handoff.** The handoff template asks for "a sample serialized result". Today the samples are the documentation fixtures, which the engine reproduces exactly but did not generate.
-  - Owner: WS2.
-  - Do: save engine output for the no-op and the example config (`python -m src.optimization.cli simulate --output ...`), labelled with real provider `action-engine` and `is_mock=true` (fixture baseline).
-  - Done when: files are committed next to the fixtures and referenced from the handoff.
-- [ ] **Log optimizer termination.** `02_ACTIONS_OPTIMIZATION.md` says "respect maximum evaluations and log termination". The reason is stored in `diagnostics["termination_reason"]`, but nothing is written to Python logging.
-  - Owner: WS2.
-  - Do: add a module logger in `src/optimization/optimizer.py` and log one INFO line per run with `run_id`, termination reason, evaluation counts, Pareto count and runtime. No secrets or absolute paths in the message.
-  - Done when: a test using `caplog` sees the line.
-- [ ] **Contract type annotation.** `recommend_strategy(..., tolerance: str = "balanced")` should be annotated with the contract's `Literal["conservative", "balanced", "aggressive"]` (`RiskTolerance` in `src/contracts/types.py`). Behaviour is already correct; invalid values are rejected.
-  - Owner: WS2.
+## 1. Small WS2 items (no dependencies)
+
+- [ ] **Multi-point frontier fixture.** `carbonopt-ai-docs/examples/README.md` asks for one for chart and dominance tests; the existing optimization fixtures have one and zero frontier points.
+  - Do: save a small seeded real run (for example 256 evaluations) as `tests/fixtures/v1/optimization_multipoint.json`.
+  - Tests: it validates with `validate_optimization_result` and is nondominated under `diagnostics.dominance_tolerances`.
+  - Size: a full run serializes every candidate's strategy, so keep the evaluation budget small.
+- [ ] **Engine-generated sample results** for the handoff (`python -m src.optimization.cli simulate --output …`), labelled `is_mock=true` because the baseline is a fixture.
+- [ ] **Log optimizer termination** (`02_ACTIONS_OPTIMIZATION.md`): one INFO line per run with `run_id`, termination reason, evaluation counts, Pareto count and runtime; test it with `caplog`.
 
 ## 2. Reviews and sign-offs (need other people)
 
-- [ ] **WS4 review of the shared C0 foundation added by WS2.** C0 did not exist, so the WS2 branch contains a minimal version (see §8 of the handoff):
-  - `src/contracts/` (types, errors, validation, serialization, protocols);
-  - `tests/fixtures/v1/`, `tests/conftest.py`, `tests/support.py`, `tests/mocks/affine_simulator.py`, `tests/contracts/test_contracts_foundation.py`;
-  - `environment.yml` (`pytest`, `pymoo>=0.6.2`) and `.gitignore`.
-
-  WS4 decides whether to keep, merge or replace these. If another branch also defines `src/contracts/`, reconcile into **one** schema system before merging to `main`; do not keep two.
-- [ ] **WS4 decision on additive contract fields.** Approve or reject:
-  - `ConstraintEvaluation.satisfied` (per-constraint badges);
-  - `RecommendationResult` carrying `schema_version`, `run_id`, `provenance` and `diagnostics`;
-  - `strategies_included` in serialized `OptimizationResult`;
-  - `pareto_rank = 1` for feasible-but-dominated candidates (the docs define only 0 and -1);
-  - extra optimizer diagnostics keys;
-  - canonical identity JSON using `ensure_ascii=False`.
+- [ ] **WS4/WS3 review of the shared contract changes** in handoff §5:
+  - `ConstraintEvaluation.satisfied` and `RecommendationResult.diagnostics`;
+  - strict assumption parsing;
+  - null standard error only for an undefined target;
+  - nonnegative optimizer seed;
+  - `-0.0` identity normalization;
+  - picklable errors;
+  - the `pymoo` pin.
 
   Record approved changes in `carbonopt-ai-docs/docs/DECISIONS.md`.
+- [ ] **WS4 decision on `pareto_rank = 1`** for feasible-but-dominated candidates (the docs define only 0 and −1).
 - [ ] **C2 sign-off** (simulator, what-if, constraints): WS3 and WS4.
 - [ ] **C3 sign-off** (optimizer, Pareto, infeasible payload, selection): WS4.
 
-## 3. Integration work blocked on other workstreams
+## 3. Blocked on other workstreams
 
-- [ ] **Run against WS1's real baseline (C1).** So far only the synthetic fixture and generated variants have been used.
-  - Do: load WS1's `BaselineBundle`, run `python -m pytest tests/contracts tests/unit` plus the CLI `simulate` and `optimize` against it, and confirm no consumer code changes are needed.
-  - Watch for the simulator's compatibility rules (handoff §4), most often `ev_share = 1` in a month where ICE-fleet scope1 is still allocated, or positive scope2 with renewable share 1. Fix such cases in the baseline or the assumptions, not by loosening the checks.
-- [ ] **Wire WS2 into WS4's services (C2/C3).** Bind `simulator=simulate_strategy` in `mode="real"`; sliders call `evaluate_what_if`; Pareto clicks use `strategies[strategy_id]` and its exact config. Add WS4's provider-swap tests (mock versus real simulator and optimizer).
-- [ ] **P1 with real risk results (C5a).** The risk-aware policies are tested only with hand-authored `RiskResult` objects and `risk_summary.json`.
-  - Do: once WS3 ships Monte Carlo, run `select_risk_pool` → WS3 risk for that pool (built with `apply_uncertainty_sample`, one shared trial set) → `recommend_strategy` for all three tolerances. Add a test using real WS3 output, including the zero-uncertainty parity check.
-- [ ] **Scenario comparison (C6, WS4).** Calls `recommend_strategy` three times on the same risk pool; WS2 reviews.
-- [ ] **All-real C4 run.** Full pipeline with no mock provenance in P0 outputs, then the `mvp-working` tag (WS4).
+- [ ] **WS1 baseline (C1), the replacement point.** WS1 publishes `src.forecasting.provider.create_forecast_provider()`; switch to `CARBONOPT_PROVIDER_MODE=real`; rerun the suite and the CLI against the real baseline. Expect compatibility errors for zero activities with allocated emissions (handoff §4); fix them in the baseline or the assumptions, not by loosening checks.
+- [ ] **WS3 risk (C5a).** Run Monte Carlo on `select_risk_pool(...)` through `apply_uncertainty_sample`; add a test with real WS3 output, including zero-uncertainty parity; confirm the three tolerances against real summaries.
+- [ ] **Scenario comparison (C6, WS4)** on top of real risk.
+- [ ] **All-real C4 run** with no mock provenance, then the `mvp-working` tag (WS4).
 
 ## 4. Later decisions (not blocking P0)
 
-- [ ] **Calibrated assumptions.** `config/action_assumptions.json` (`demo-actions-v1`) is illustrative and uncalibrated. Real values need a new `assumptions_id`/`version`, evidence and a reviewer recorded per `DECISIONS.md`; strategy IDs will change accordingly.
-- [ ] **Performance on the declared demo profile.** Measured only on one developer machine (simulation about 0.8 ms, 2,048-evaluation optimization about 3 s). Re-run `python -m src.optimization.cli profile` on the team's demo setup once WS4 declares it.
-- [ ] **Dependency lock.** `environment.yml` only sets `pymoo>=0.6.2` (needed: older versions use the global NumPy random generator). WS4 pins exact versions at C0; the suite passes on both NumPy 2.4 / pandas 3.0 and NumPy 1.26 / pandas 2.3.
-- [ ] **Saved result size.** A full 2,048-candidate result serializes to about 15 MB. Decide with WS4 whether replay bundles use the compact `strategies="frontier"` form (about 4 MB).
-- [ ] **36/60-month horizons.** The simulator already handles them (depreciation cut-off is tested on 60 months), but they stay hidden until WS1's forecast supports them.
-- [ ] **Root `README.md`.** Still describes an older Django plan and links missing files; WS4 to update after the docs package is moved to the repo root.
+- [ ] **Validator performance (WS4 with WS2).** About 1.6 ms of each 2.5 ms simulation is `validate_baseline`; the pipeline re-validates every stored strategy (about 2.5 s at 2,048 candidates). Vectorizing the shared validators would bring dashboard Optimize from about 12 s to roughly 4–5 s without skipping any check.
+- [ ] **Saved result size.** A full 2,048-candidate result is about 15 MB of JSON. A compact replay format would need a contract decision, because `validate_optimization_result` requires every candidate's strategy.
+- [ ] **Calibrated assumptions.** A new `assumptions_id`/version, evidence and reviewer recorded per `DECISIONS.md`; strategy IDs change accordingly.
+- [ ] **Performance on the declared demo machine** once WS4 names it (`python -m src.optimization.cli profile`).
+- [ ] **36/60-month horizons.** The simulator handles them (depreciation cut-off tested on 60 months); they stay hidden until WS1 supports them.
+- [ ] **Display-share helper.** `src/dashboard/presentation.resulting_share` restates the renewable/EV share formula for slider captions. A parity test pins it to `compute_action_breakdown`; WS4 may switch to calling the engine directly.

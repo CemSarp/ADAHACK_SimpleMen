@@ -32,38 +32,31 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.core.problem import Problem
 from pymoo.core.repair import Repair
 
-from src.actions.definitions import assign_strategy_id, strategy_id_from_identity, strategy_identity
-from src.contracts import (
+from src.actions.definitions import (
+    assign_strategy_id,
+    assumptions_fingerprint,
+    baseline_fingerprint,
+    config_from_vector,
+    strategy_id_from_identity,
+    strategy_identity,
+)
+from src.contracts import validation as val
+from src.contracts.errors import ContractValidationError, OptimizationError
+from src.contracts.identity import canonical_hash
+from src.contracts.protocols import SimulationFn
+from src.contracts.types import (
     ACTION_NAMES,
-    CANDIDATE_COLUMNS,
+    OPTIMIZATION_TABLE_COLUMNS,
     SCHEMA_VERSION,
     ActionAssumptions,
     ActionConfig,
     BaselineBundle,
     ConstraintConfig,
     ConstraintEvaluation,
-    ContractValidationError,
-    OptimizationError,
     OptimizationResult,
     OptimizerConfig,
     Provenance,
-    SimulationFn,
     SimulationResult,
-)
-from src.contracts.serialization import (
-    assumptions_fingerprint,
-    baseline_fingerprint,
-    canonical_json,
-    constraint_config_to_dict,
-    optimizer_config_to_dict,
-    sha256_hex,
-)
-from src.contracts.validation import (
-    validate_action_assumptions,
-    validate_baseline_bundle,
-    validate_constraint_config,
-    validate_optimizer_config,
-    validate_simulation_result,
 )
 from src.optimization.constraints import (
     SOLVER_FEASIBILITY_TOLERANCE,
@@ -77,6 +70,7 @@ from src.optimization.pareto import (
     dominated_mask,
 )
 
+__version__ = "ws2-nsga2-1.1.0"  # bump whenever outputs for the same inputs can change
 PROVIDER = "nsga2-optimizer"
 SOLVER = "pymoo.NSGA2"
 REPAIR_POLICY = "clip_to_unit_interval"
@@ -91,13 +85,13 @@ def default_seed_configs() -> tuple[ActionConfig, ...]:
     no-op, each single action at full implementation (canonical order), all actions at
     full implementation, all actions at half implementation."""
     n = len(ACTION_NAMES)
-    singles = tuple(ActionConfig.from_sequence([1.0 if j == i else 0.0 for j in range(n)]) for i in range(n))
-    return (ActionConfig.zeros(), *singles, ActionConfig.from_sequence([1.0] * n), ActionConfig.from_sequence([0.5] * n))
+    singles = tuple(config_from_vector([1.0 if j == i else 0.0 for j in range(n)]) for i in range(n))
+    return (ActionConfig.noop(), *singles, config_from_vector([1.0] * n), config_from_vector([0.5] * n))
 
 
 def objective_vector(result: SimulationResult) -> tuple[float, float]:
     """Minimization objectives: (total CO2e, negative total operating profit)."""
-    return result.metrics.total_co2e_tco2e, -result.metrics.total_profit_gbp
+    return float(result.metrics["total_co2e_tco2e"]), -float(result.metrics["total_profit_gbp"])
 
 
 def solver_constraint_vector(evaluation: ConstraintEvaluation) -> tuple[float, float, float]:
@@ -107,7 +101,7 @@ def solver_constraint_vector(evaluation: ConstraintEvaluation) -> tuple[float, f
     positive so the search agrees with the published feasibility flag.
     """
     values = (evaluation.g_budget, evaluation.g_profit, evaluation.g_target)
-    flags = (evaluation.satisfied.budget, evaluation.satisfied.profit, evaluation.satisfied.target)
+    flags = (evaluation.satisfied["budget"], evaluation.satisfied["profit"], evaluation.satisfied["target"])
     return tuple(
         g - SOLVER_FEASIBILITY_TOLERANCE if ok else max(g - SOLVER_FEASIBILITY_TOLERANCE, _RAW_ONLY_VIOLATION)
         for g, ok in zip(values, flags)
@@ -145,15 +139,13 @@ class _Registry:
     def evaluate(self, config: ActionConfig, *, count_request: bool = True) -> _Candidate:
         if count_request:
             self.requests += 1
-        key = config.to_tuple()
+        key = config.as_vector()
         cached = self.by_key.get(key)
         if cached is not None:
             return cached
         result = self.simulator(self.baseline, config, assumptions=self.assumptions)
-        validate_simulation_result(result, expected_months=self.baseline.horizon_months)
-        if result.baseline_id != self.baseline.baseline_id:
-            raise ContractValidationError("simulator.baseline_id", "simulator returned a result for a different baseline")
-        if result.config.to_tuple() != key:
+        val.validate_simulation_result(result, self.baseline)  # also checks baseline ID and dates
+        if result.config.as_vector() != key:
             raise ContractValidationError("simulator.config", "simulator returned a different configuration")
         identity = strategy_identity(
             self.baseline.baseline_id,
@@ -186,7 +178,7 @@ class _SearchProblem(Problem):
         G = np.empty((len(X), 3))
         for i, row in enumerate(np.asarray(X, dtype=np.float64)):
             try:
-                config = ActionConfig.from_sequence(row.tolist())
+                config = config_from_vector(row)
             except ContractValidationError as exc:
                 raise OptimizationError(f"solver proposed an invalid decision vector {row.tolist()}: {exc}") from exc
             candidate = self._registry.evaluate(config)
@@ -216,7 +208,7 @@ def _latin_hypercube(rng: np.random.Generator, n: int, dims: int) -> np.ndarray:
 
 
 def _initial_population(config: OptimizerConfig) -> np.ndarray:
-    seeds = np.array([seed.to_tuple() for seed in default_seed_configs()], dtype=np.float64)
+    seeds = np.array([seed.as_vector() for seed in default_seed_configs()], dtype=np.float64)
     size = min(config.population_size, config.max_evaluations)
     if size <= len(seeds):
         return seeds[:size]
@@ -252,15 +244,15 @@ def _candidate_frame(registry: _Registry) -> pd.DataFrame:
     for candidate in registry.by_id.values():
         metrics = candidate.result.metrics
         evaluation = candidate.evaluation
-        ratio = metrics.co2_reduction_ratio
+        ratio = metrics["co2_reduction_ratio"]
         rows.append(
             {
                 "strategy_id": candidate.strategy_id,
-                **candidate.config.to_dict(),
-                "total_co2e_tco2e": metrics.total_co2e_tco2e,
-                "total_profit_gbp": metrics.total_profit_gbp,
-                "total_cost_gbp": metrics.total_cost_gbp,
-                "co2_reduction_ratio": np.nan if ratio is None else ratio,
+                **candidate.config.as_dict(),
+                "total_co2e_tco2e": float(metrics["total_co2e_tco2e"]),
+                "total_profit_gbp": float(metrics["total_profit_gbp"]),
+                "total_cost_gbp": float(metrics["total_cost_gbp"]),
+                "co2_reduction_ratio": np.nan if ratio is None else float(ratio),
                 "g_budget": evaluation.g_budget,
                 "g_profit": evaluation.g_profit,
                 "g_target": evaluation.g_target,
@@ -268,7 +260,7 @@ def _candidate_frame(registry: _Registry) -> pd.DataFrame:
                 "pareto_rank": -1,
             }
         )
-    frame = pd.DataFrame(rows, columns=[name for name, _ in CANDIDATE_COLUMNS])
+    frame = pd.DataFrame(rows, columns=list(OPTIMIZATION_TABLE_COLUMNS))
     frame["strategy_id"] = frame["strategy_id"].astype(object)
     return frame
 
@@ -288,10 +280,10 @@ def _revalidate_frontier(pareto: pd.DataFrame, registry: _Registry, tolerances: 
     for strategy_id in pareto["strategy_id"]:
         candidate = registry.by_id[strategy_id]
         fresh = registry.simulator(registry.baseline, candidate.config, assumptions=registry.assumptions)
-        validate_simulation_result(fresh, expected_months=registry.baseline.horizon_months)
+        val.validate_simulation_result(fresh, registry.baseline)
         if (
             fresh.strategy_id != candidate.canonical_id
-            or fresh.config.to_tuple() != candidate.config.to_tuple()
+            or fresh.config.as_vector() != candidate.config.as_vector()
             or not _same_outcome(fresh, candidate.result)
         ):
             raise OptimizationError(f"re-evaluating {strategy_id} did not reproduce the stored outcome; simulator is not deterministic")
@@ -337,10 +329,10 @@ def optimize_strategies(
     failures.
     """
     started = time.perf_counter()
-    validate_baseline_bundle(baseline)
-    validate_constraint_config(constraints)
-    validate_action_assumptions(assumptions)
-    validate_optimizer_config(config)
+    val.validate_baseline(baseline)
+    val.validate_constraints(constraints)
+    val.validate_assumptions(assumptions)
+    val.validate_optimizer_config(config)
     if not callable(simulator):
         raise ContractValidationError("simulator", "must be a callable SimulationFn")
     require_defined_ratio_target(math.fsum(baseline.monthly["total_co2e_tco2e"].to_numpy(dtype=np.float64)), constraints)
@@ -351,7 +343,7 @@ def optimize_strategies(
     initial = _initial_population(config)
     try:
         # The no-op is simulated before any solver work; it is counted when the initial population requests it.
-        noop = registry.evaluate(ActionConfig.zeros(), count_request=False)
+        noop = registry.evaluate(ActionConfig.noop(), count_request=False)
         algorithm = NSGA2(pop_size=config.population_size, sampling=initial, eliminate_duplicates=True, repair=repair)
         algorithm.setup(problem, seed=config.seed, verbose=False)
         termination_reason, generations_completed = _run_search(algorithm, problem, registry, config)
@@ -401,16 +393,14 @@ def optimize_strategies(
     if warnings:
         diagnostics["warning"] = " ".join(warnings)
 
-    input_hash = sha256_hex(
-        canonical_json(
-            {
-                "baseline": baseline_fingerprint(baseline),
-                "constraints": constraint_config_to_dict(constraints),
-                "assumptions": assumptions_fingerprint(assumptions),
-                "optimizer": optimizer_config_to_dict(config),
-                "solver": [SOLVER, pymoo.__version__],
-            }
-        )
+    input_hash = canonical_hash(
+        {
+            "baseline": baseline_fingerprint(baseline),
+            "constraints": dataclasses.asdict(constraints),
+            "assumptions": assumptions_fingerprint(assumptions),
+            "optimizer": dataclasses.asdict(config),
+            "solver": [SOLVER, pymoo.__version__, __version__],
+        }
     )
     return OptimizationResult(
         schema_version=SCHEMA_VERSION,

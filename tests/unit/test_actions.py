@@ -25,9 +25,10 @@ from src.actions import (
     simulate_strategy,
     strategy_identity,
 )
-from src.actions.definitions import assign_strategy_id, strategy_id_from_identity
+from src.actions.definitions import assign_strategy_id, canonical_config, strategy_id_from_identity
 from src.contracts import ACTION_NAMES, ActionConfig, ContractValidationError
 from src.contracts import serialization as ser
+from src.contracts import validation as val
 from tests.support import (
     assumptions_with,
     assumptions_with_cost,
@@ -81,39 +82,39 @@ def test_action_vector_order_is_canonical():
     assert tuple(f.name for f in dataclasses.fields(ActionConfig)) == expected
     assert tuple(d.name for d in ACTION_DEFINITIONS) == expected
     config = ActionConfig(0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
-    assert config.to_tuple() == (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
-    assert list(config.to_dict()) == list(expected)
+    assert config.as_vector() == (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+    assert list(config.as_dict()) == list(expected)
 
 
 def test_vector_round_trip_keeps_full_precision():
     values = [0.1 + 0.2, 1 / 3, 0.0, 1.0, 0.5, 2.0**-40]
     config = config_from_vector(values)
-    assert config.to_tuple() == tuple(values)
+    assert config.as_vector() == tuple(values)
     assert np.array_equal(config_to_vector(config), np.array(values))
 
 
 @pytest.mark.parametrize("bad", [-0.1, 1.0000001, 70, 100.0, math.nan, math.inf, -math.inf, True, "0.5", None])
 def test_action_values_outside_unit_interval_or_wrong_type_are_rejected(bad):
     with pytest.raises(ContractValidationError) as info:
-        ActionConfig(bad, 0.0, 0.0, 0.0, 0.0, 0.0)
+        canonical_config(ActionConfig(bad, 0.0, 0.0, 0.0, 0.0, 0.0))
     assert info.value.field == "config.renewable_energy"
 
 
 def test_negative_zero_and_numpy_scalars_are_normalised():
-    config = ActionConfig(-0.0, np.float64(0.5), np.float32(0.25), np.int64(1), 0, 1)
+    config = canonical_config(ActionConfig(-0.0, np.float64(0.5), np.float32(0.25), np.int64(1), 0, 1))
     assert math.copysign(1.0, config.renewable_energy) == 1.0
-    assert all(type(v) is float for v in config.to_tuple())
-    assert config.to_tuple() == (0.0, 0.5, 0.25, 1.0, 0.0, 1.0)
+    assert all(type(v) is float for v in config.as_vector())
+    assert config.as_vector() == (0.0, 0.5, 0.25, 1.0, 0.0, 1.0)
     assert compute_strategy_id("b", ActionConfig(-0.0, 0, 0, 0, 0, 0), fixture_assumptions()) == compute_strategy_id(
-        "b", ActionConfig.zeros(), fixture_assumptions()
+        "b", ActionConfig.noop(), fixture_assumptions()
     )
 
 
 def test_config_mapping_requires_exactly_the_six_actions():
-    with pytest.raises(ContractValidationError, match="missing"):
-        ActionConfig.from_mapping({"renewable_energy": 0.1})
+    with pytest.raises(ContractValidationError, match="required"):
+        ser.action_config_from_dict({"renewable_energy": 0.1})
     with pytest.raises(ContractValidationError, match="unknown"):
-        ActionConfig.from_mapping({**dict.fromkeys(ACTION_NAMES, 0.0), "renewables": 0.5})
+        ser.action_config_from_dict({**dict.fromkeys(ACTION_NAMES, 0.0), "renewables": 0.5})
 
 
 # ---------------------------------------------------------------------------
@@ -130,12 +131,13 @@ def test_config_assumption_file_is_the_versioned_illustrative_fixture():
     assert (loaded.renewable_effectiveness, loaded.ev_effectiveness, loaded.travel_effectiveness) == (1.0, 1.0, 1.0)
 
 
-def test_effectiveness_defaults_to_one_when_omitted():
+def test_effectiveness_fields_are_required_and_set_to_one_in_the_config():
+    # The shared schema has no silent default: the versioned file states the 1.0 hooks.
     data = load_fixture("action_assumptions.json")
-    for key in ("renewable_effectiveness", "ev_effectiveness", "travel_effectiveness"):
-        del data[key]
-    parsed = ser.action_assumptions_from_dict(data)
-    assert (parsed.renewable_effectiveness, parsed.ev_effectiveness, parsed.travel_effectiveness) == (1.0, 1.0, 1.0)
+    del data["ev_effectiveness"]
+    with pytest.raises(ContractValidationError) as info:
+        ser.assumptions_from_dict(data)
+    assert info.value.field == "assumptions.ev_effectiveness"
 
 
 def _mutated_assumptions(mutate):
@@ -167,7 +169,7 @@ def _mutated_assumptions(mutate):
 )
 def test_invalid_assumptions_are_rejected_with_field(mutate, field_fragment):
     with pytest.raises(ContractValidationError) as info:
-        ser.action_assumptions_from_dict(_mutated_assumptions(mutate))
+        val.validate_assumptions(ser.assumptions_from_dict(_mutated_assumptions(mutate)))
     assert field_fragment in info.value.field
 
 
@@ -182,8 +184,8 @@ def test_assumptions_are_immutable(assumptions):
 
 
 def test_noop_matches_golden_fixture_exactly(baseline, assumptions):
-    result = simulate_strategy(baseline, ActionConfig.zeros(), assumptions=assumptions)
-    golden = ser.simulation_result_from_dict(load_fixture("simulation_noop.json"))
+    result = simulate_strategy(baseline, ActionConfig.noop(), assumptions=assumptions)
+    golden = ser.simulation_from_dict(load_fixture("simulation_noop.json"))
     assert result.strategy_id == golden.strategy_id == "strategy-84d0730a93b9d729"
     assert result.metrics == golden.metrics
     assert frames_identical(result.monthly, golden.monthly)
@@ -215,13 +217,13 @@ def _irregular_row(rng):
 
 def test_noop_is_bitwise_exact_on_an_irregular_float_baseline(assumptions):
     baseline = make_baseline(months=60, row_fn=_irregular_row(np.random.default_rng(7)))
-    result = simulate_strategy(baseline, ActionConfig.zeros(), assumptions=assumptions)
+    result = simulate_strategy(baseline, ActionConfig.noop(), assumptions=assumptions)
     for column in ["revenue_gbp", "operating_profit_gbp", *SCOPE_COLUMNS]:
         assert np.array_equal(result.monthly[column].to_numpy(), baseline.monthly[column].to_numpy()), column
     for column in COST_COLUMNS:
         assert (result.monthly[column].to_numpy() == 0.0).all()
-    assert result.metrics.co2_reduction_tco2e == 0.0 and result.metrics.profit_change_gbp == 0.0
-    assert result.metrics.total_cost_gbp == 0.0
+    assert result.metrics["co2_reduction_tco2e"] == 0.0 and result.metrics["profit_change_gbp"] == 0.0
+    assert result.metrics["total_cost_gbp"] == 0.0
     # Non-vacuous: re-summing the literal scope3 bucket products does not round-trip here.
     s3 = baseline.monthly["scope3_tco2e"].to_numpy()
     literal = s3 * 0.2 + s3 * 0.2 + s3 * 0.5 + s3 * 0.1
@@ -249,11 +251,11 @@ def test_invalid_inputs_fail_before_computation(baseline, assumptions):
     with pytest.raises(ContractValidationError, match="config"):
         simulate_strategy(baseline, {"renewable_energy": 0.5}, assumptions=assumptions)  # type: ignore[arg-type]
     with pytest.raises(ContractValidationError, match="assumptions"):
-        simulate_strategy(baseline, ActionConfig.zeros(), assumptions=ser.action_assumptions_to_dict(assumptions))  # type: ignore[arg-type]
+        simulate_strategy(baseline, ActionConfig.noop(), assumptions=ser.assumptions_to_dict(assumptions))  # type: ignore[arg-type]
     tampered = snapshot(baseline)
     tampered.monthly.loc[3, "gas_kwh"] = math.nan
     with pytest.raises(ContractValidationError, match="gas_kwh"):
-        simulate_strategy(tampered, ActionConfig.zeros(), assumptions=assumptions)
+        simulate_strategy(tampered, ActionConfig.noop(), assumptions=assumptions)
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +343,7 @@ def test_effectiveness_scales_adoption(baseline, assumptions):
     assert breakdown["renewable_energy_share"].iloc[0] == close(0.6)
     result = simulate_strategy(baseline, only(renewable_energy=1.0), assumptions=half_effective)
     assert month(result)["scope2_tco2e"] == close(15.0)
-    assert result.metrics.total_capex_gbp == 100_000.0  # ineffective adoption still costs the full coefficient
+    assert result.metrics["total_capex_gbp"] == 100_000.0  # ineffective adoption still costs the full coefficient
 
 
 def test_renewable_and_building_combine_multiplicatively(baseline, assumptions):
@@ -378,9 +380,9 @@ def test_ev_can_increase_total_emissions_and_is_not_clamped(baseline, assumption
     row = month(result)
     assert row["scope1_tco2e"] == close(12.0)
     assert row["scope2_tco2e"] == close(110.0)  # 30 + 10,000 kWh * 0.01 * 0.8
-    assert result.metrics.total_co2e_tco2e == close(12 * 172.0)
-    assert result.metrics.co2_reduction_tco2e == close(1_200.0 - 2_064.0)
-    assert result.metrics.co2_reduction_ratio == close(-0.72)
+    assert result.metrics["total_co2e_tco2e"] == close(12 * 172.0)
+    assert result.metrics["co2_reduction_tco2e"] == close(1_200.0 - 2_064.0)
+    assert result.metrics["co2_reduction_ratio"] == close(-0.72)
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +445,7 @@ def test_full_elimination_reaches_zero_without_going_negative(baseline):
 def test_zero_activity_with_positive_allocated_emissions_is_rejected(assumptions, updates, column):
     baseline = make_baseline(**updates)
     with pytest.raises(ContractValidationError) as info:
-        simulate_strategy(baseline, ActionConfig.zeros(), assumptions=assumptions)
+        simulate_strategy(baseline, ActionConfig.noop(), assumptions=assumptions)
     assert info.value.field == f"baseline.monthly.{column}"
 
 
@@ -455,21 +457,21 @@ def test_no_eligible_fleet_is_valid_when_assumptions_allocate_no_fleet_emissions
         capex_at_full_gbp=0.0,
         monthly_opex_at_full_gbp=0.0,
     )
-    noop = simulate_strategy(baseline, ActionConfig.zeros(), assumptions=no_fleet)
+    noop = simulate_strategy(baseline, ActionConfig.noop(), assumptions=no_fleet)
     ev = simulate_strategy(baseline, only(ev_adoption=1.0), assumptions=no_fleet)
-    assert ev.metrics.total_co2e_tco2e == noop.metrics.total_co2e_tco2e
-    assert ev.metrics.total_cost_gbp == 0.0 and ev.metrics.total_operating_savings_gbp == 0.0
+    assert ev.metrics["total_co2e_tco2e"] == noop.metrics["total_co2e_tco2e"]
+    assert ev.metrics["total_cost_gbp"] == 0.0 and ev.metrics["total_operating_savings_gbp"] == 0.0
     # A mis-specified assumption set (cost coefficient without opportunity) is charged as written.
     costly = assumptions_with(assumptions, gas_share=1.0, ice_fleet_share=0.0)
     charged = simulate_strategy(baseline, only(ev_adoption=1.0), assumptions=costly)
-    assert charged.metrics.total_co2e_tco2e == noop.metrics.total_co2e_tco2e
-    assert charged.metrics.total_capex_gbp == 150_000.0
+    assert charged.metrics["total_co2e_tco2e"] == noop.metrics["total_co2e_tco2e"]
+    assert charged.metrics["total_capex_gbp"] == 150_000.0
 
 
 def test_full_renewable_baseline(assumptions):
     baseline = make_baseline(renewable_energy_share=1.0, scope2_tco2e=0.0)
     renewable = simulate_strategy(baseline, only(renewable_energy=1.0), assumptions=assumptions)
-    assert renewable.metrics.co2_reduction_tco2e == 0.0
+    assert renewable.metrics["co2_reduction_tco2e"] == 0.0
     assert month(renewable)["incremental_opex_gbp"] == close(100.0)  # fixed opex only; no premium uplift
     ev = simulate_strategy(baseline, only(ev_adoption=1.0), assumptions=assumptions)
     assert month(ev)["scope2_tco2e"] == 0.0  # added EV load is fully renewable
@@ -477,11 +479,11 @@ def test_full_renewable_baseline(assumptions):
 
 def test_zero_emission_baseline_has_null_ratio_and_ev_can_add_emissions(assumptions):
     baseline = make_baseline(scope1_tco2e=0.0, scope2_tco2e=0.0, scope3_tco2e=0.0)
-    noop = simulate_strategy(baseline, ActionConfig.zeros(), assumptions=assumptions)
-    assert noop.metrics.baseline_total_co2e_tco2e == 0.0 and noop.metrics.co2_reduction_ratio is None
+    noop = simulate_strategy(baseline, ActionConfig.noop(), assumptions=assumptions)
+    assert noop.metrics["baseline_total_co2e_tco2e"] == 0.0 and noop.metrics["co2_reduction_ratio"] is None
     ev = simulate_strategy(baseline, only(ev_adoption=1.0), assumptions=assumptions)
-    assert ev.metrics.total_co2e_tco2e == close(36.0)  # 12 * 10,000 kWh * 0.000375 * 0.8
-    assert ev.metrics.co2_reduction_tco2e == close(-36.0) and ev.metrics.co2_reduction_ratio is None
+    assert ev.metrics["total_co2e_tco2e"] == close(36.0)  # 12 * 10,000 kWh * 0.000375 * 0.8
+    assert ev.metrics["co2_reduction_tco2e"] == close(-36.0) and ev.metrics["co2_reduction_ratio"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +492,7 @@ def test_zero_emission_baseline_has_null_ratio_and_ev_can_add_emissions(assumpti
 
 
 def test_fixture_strategy_ids_are_reproduced(baseline, assumptions, example_config):
-    assert compute_strategy_id(baseline.baseline_id, ActionConfig.zeros(), assumptions) == "strategy-84d0730a93b9d729"
+    assert compute_strategy_id(baseline.baseline_id, ActionConfig.noop(), assumptions) == "strategy-84d0730a93b9d729"
     assert compute_strategy_id(baseline.baseline_id, example_config, assumptions) == "strategy-8be15857fffc57f6"
 
 
@@ -532,7 +534,7 @@ def test_simulation_result_json_round_trip_keeps_dates_units_and_precision(basel
     assert payload["schema_version"] == "1.0.0"
     assert payload["monthly"][0]["timestamp"] == "2027-01-01"
     assert payload["config"]["renewable_energy"] == 0.30000000000000004
-    restored = ser.simulation_result_from_dict(payload)
+    restored = ser.simulation_from_dict(payload)
     assert restored.config == config and restored.strategy_id == result.strategy_id
     assert restored.metrics == result.metrics and restored.provenance == result.provenance
     assert frames_identical(restored.monthly, result.monthly)
@@ -545,7 +547,7 @@ def test_provenance_labels_inputs(assumptions, example_config):
     assert mock.provenance.provider == "action-engine" and mock.provenance.is_mock is True
     assert real.provenance.is_mock is False
     assert real.provenance.assumptions_id == "demo-actions-v1" and real.provenance.seed is None
-    other = simulate_strategy(make_baseline(), ActionConfig.zeros(), assumptions=assumptions)
+    other = simulate_strategy(make_baseline(), ActionConfig.noop(), assumptions=assumptions)
     assert other.provenance.input_hash != mock.provenance.input_hash
 
 
@@ -610,9 +612,9 @@ def test_uncertainty_sample_follows_the_documented_mapping(assumptions):
     assert sampled.building_max_reduction == close(0.27)  # 0.3 * 0.9 scaled
     assert sampled.supplier_max_reduction == close(0.255)
     assert sampled.supplier_monthly_savings_at_full_gbp == close(850.0)
-    assert sampled.costs.renewable_energy.capex_at_full_gbp == close(110_000.0)
-    assert sampled.costs.cloud_efficiency.monthly_opex_at_full_gbp == close(18.0)
-    assert sampled.costs.ev_adoption == assumptions.costs.ev_adoption
+    assert sampled.costs["renewable_energy"].capex_at_full_gbp == close(110_000.0)
+    assert sampled.costs["cloud_efficiency"].monthly_opex_at_full_gbp == close(18.0)
+    assert sampled.costs["ev_adoption"] == assumptions.costs["ev_adoption"]
     assert sampled.assumptions_id == "trial-1" and sampled.version == assumptions.version
     assert assumptions == fixture_assumptions()  # parent unchanged
 

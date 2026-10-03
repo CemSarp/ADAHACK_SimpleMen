@@ -12,27 +12,84 @@ configurations are collapsed onto the lexicographically smallest strategy ID.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
-from src.contracts import ACTION_NAMES, ContractValidationError
-from src.contracts.validation import normalize_candidate_frame
-from src.optimization.constraints import SOLVER_FEASIBILITY_TOLERANCE
+from src.contracts import validation as val
+from src.contracts.errors import ContractValidationError
+from src.contracts.serialization import OPTIMIZATION_TABLE_SPEC, empty_frame
+from src.contracts.types import ACTION_NAMES, OPTIMIZATION_TABLE_COLUMNS
 
-EMISSIONS_ABS_TOLERANCE_TCO2E = 1e-6
-EMISSIONS_REL_TOLERANCE = 1e-8
-PROFIT_ABS_TOLERANCE_GBP = 0.01
+__version__ = "ws2-pareto-1.1.0"
+
+EMISSIONS_ABS_TOLERANCE_TCO2E = val.SCOPE_ATOL_TCO2E
+EMISSIONS_REL_TOLERANCE = val.SCOPE_RTOL
+PROFIT_ABS_TOLERANCE_GBP = val.CURRENCY_ATOL_GBP
 
 RANK_FRONTIER = 0
 RANK_DOMINATED = 1
 RANK_INFEASIBLE = -1
 
 _CHUNK = 1024
+_FLOAT_COLUMNS = tuple(name for name, kind in OPTIMIZATION_TABLE_SPEC.items() if kind == "float")
+
+
+def normalize_candidate_frame(frame: Any, field: str = "candidates", *, require_rank: bool = True) -> pd.DataFrame:
+    """Validate a candidates/Pareto table and return a typed copy in canonical column order.
+
+    ``pareto_rank`` may be omitted when ``require_rank`` is false (it is an output column).
+    """
+    required = [c for c in OPTIMIZATION_TABLE_COLUMNS if require_rank or c != "pareto_rank"]
+    if not isinstance(frame, pd.DataFrame):
+        raise ContractValidationError(field, "must be a pandas DataFrame")
+    missing = [c for c in required if c not in frame.columns]
+    if missing:
+        raise ContractValidationError(field, f"missing required columns {missing}")
+    if len(frame) == 0:
+        return empty_frame(OPTIMIZATION_TABLE_SPEC)
+    ids = frame["strategy_id"].to_numpy(dtype=object)
+    if not all(isinstance(v, str) and v.strip() for v in ids):
+        raise ContractValidationError(f"{field}.strategy_id", "must contain nonempty strings")
+    out: dict[str, Any] = {"strategy_id": pd.Series(ids, dtype=object)}
+    for name in _FLOAT_COLUMNS:
+        series = frame[name]
+        if not pd.api.types.is_numeric_dtype(series) or pd.api.types.is_bool_dtype(series):
+            raise ContractValidationError(f"{field}.{name}", f"must be numeric, got dtype {series.dtype}")
+        values = series.to_numpy(dtype=np.float64, copy=True)
+        if not np.isfinite(values).all():
+            raise ContractValidationError(f"{field}.{name}", "must be finite")
+        out[name] = values
+    actions = np.column_stack([out[name] for name in ACTION_NAMES])
+    if ((actions < 0.0) | (actions > 1.0)).any():
+        raise ContractValidationError(field, "action columns must be fractions within [0, 1]")
+    if (out["total_cost_gbp"] < 0.0).any():
+        raise ContractValidationError(f"{field}.total_cost_gbp", "must be >= 0")
+    ratio = frame["co2_reduction_ratio"]
+    if pd.api.types.is_bool_dtype(ratio) or not (
+        pd.api.types.is_numeric_dtype(ratio) or ratio.map(lambda v: v is None or isinstance(v, (int, float))).all()
+    ):
+        raise ContractValidationError(f"{field}.co2_reduction_ratio", "must be numeric or null")
+    ratio_values = pd.to_numeric(ratio).to_numpy(dtype=np.float64, na_value=np.nan)
+    if np.isinf(ratio_values).any():
+        raise ContractValidationError(f"{field}.co2_reduction_ratio", "must be finite or null")
+    out["co2_reduction_ratio"] = ratio_values
+    if not pd.api.types.is_bool_dtype(frame["feasible"]):
+        raise ContractValidationError(f"{field}.feasible", f"must be bool, got dtype {frame['feasible'].dtype}")
+    out["feasible"] = frame["feasible"].to_numpy(dtype=bool, copy=True)
+    if require_rank:
+        if not pd.api.types.is_integer_dtype(frame["pareto_rank"]):
+            raise ContractValidationError(f"{field}.pareto_rank", f"must be int, got dtype {frame['pareto_rank'].dtype}")
+        out["pareto_rank"] = frame["pareto_rank"].to_numpy(dtype=np.int64, copy=True)
+    else:
+        out["pareto_rank"] = np.full(len(frame), RANK_INFEASIBLE, dtype=np.int64)
+    return pd.DataFrame({name: out[name] for name in OPTIMIZATION_TABLE_COLUMNS})
 
 
 def objective_tolerances(emissions: np.ndarray) -> tuple[float, float]:
     """(emissions, profit) tolerances; one emissions scale per candidate set keeps dominance acyclic."""
-    scale = float(np.max(np.abs(emissions))) if emissions.size else 0.0
+    scale = float(np.max(np.abs(emissions))) if np.size(emissions) else 0.0
     return EMISSIONS_ABS_TOLERANCE_TCO2E + EMISSIONS_REL_TOLERANCE * scale, PROFIT_ABS_TOLERANCE_GBP
 
 
@@ -71,7 +128,7 @@ def dominated_mask(
 def _check_feasible_rows(frame: pd.DataFrame) -> None:
     feasible = frame["feasible"].to_numpy()
     g = frame.loc[:, ["g_budget", "g_profit", "g_target"]].to_numpy()
-    inconsistent = feasible & (g > SOLVER_FEASIBILITY_TOLERANCE).any(axis=1)
+    inconsistent = feasible & (g > val.SOLVER_FEASIBILITY_TOL).any(axis=1)
     if inconsistent.any():
         sid = frame["strategy_id"].iloc[int(np.flatnonzero(inconsistent)[0])]
         raise ContractValidationError("candidates.feasible", f"{sid} is marked feasible but violates a normalized constraint")
@@ -117,4 +174,6 @@ def compute_pareto_frontier(candidates: pd.DataFrame) -> pd.DataFrame:
     """
     ranked = assign_pareto_ranks(candidates)
     frontier = _drop_exact_duplicates(ranked.loc[ranked["pareto_rank"] == RANK_FRONTIER])
+    if len(frontier) == 0:
+        return empty_frame(OPTIMIZATION_TABLE_SPEC)
     return frontier.sort_values(["total_co2e_tco2e", "strategy_id"], kind="mergesort").reset_index(drop=True)

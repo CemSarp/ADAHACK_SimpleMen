@@ -17,7 +17,6 @@ from src.actions import simulate_strategy
 from src.actions.definitions import strategy_id_from_identity
 from src.contracts import (
     ACTION_NAMES,
-    CANDIDATE_COLUMNS,
     ActionConfig,
     ConstraintConfig,
     ContractValidationError,
@@ -25,6 +24,8 @@ from src.contracts import (
     OptimizerConfig,
 )
 from src.contracts import serialization as ser
+from src.contracts import validation as val
+from src.contracts.types import OPTIMIZATION_TABLE_COLUMNS
 from src.optimization import evaluate_constraints, optimize_strategies
 from src.optimization.optimizer import default_seed_configs, objective_vector, solver_constraint_vector
 from src.optimization.pareto import dominance_tolerances, dominated_mask
@@ -50,7 +51,7 @@ def small_run():
     from tests.support import fixture_assumptions, fixture_baseline
 
     baseline, assumptions = fixture_baseline(), fixture_assumptions()
-    constraints = ser.constraint_config_from_dict(load_fixture("constraints.json"))
+    constraints = ser.constraints_from_dict(load_fixture("constraints.json"))
     result = optimize_strategies(baseline, constraints, assumptions=assumptions, config=SMALL, simulator=simulate_strategy)
     return baseline, assumptions, constraints, result
 
@@ -60,9 +61,9 @@ def assert_valid_frontier(result, constraints):
     assert len(pareto) > 0 and pareto["feasible"].all() and (pareto["pareto_rank"] == 0).all()
     for sid in pareto["strategy_id"]:
         metrics = result.strategies[sid].metrics
-        assert metrics.total_cost_gbp <= constraints.budget_gbp + 0.01
-        assert metrics.total_profit_gbp >= constraints.min_total_profit_gbp - 0.01
-        assert metrics.co2_reduction_ratio >= constraints.min_co2_reduction_ratio - 1e-8
+        assert metrics["total_cost_gbp"] <= constraints.budget_gbp + 0.01
+        assert metrics["total_profit_gbp"] >= constraints.min_total_profit_gbp - 0.01
+        assert metrics["co2_reduction_ratio"] >= constraints.min_co2_reduction_ratio - 1e-8
     emissions, profits = pareto["total_co2e_tco2e"].to_numpy(), pareto["total_profit_gbp"].to_numpy()
     declared = result.diagnostics["dominance_tolerances"]
     assert (declared["emissions_tco2e"], declared["profit_gbp"]) == dominance_tolerances(result.candidates)
@@ -78,7 +79,7 @@ def assert_valid_frontier(result, constraints):
 
 def test_deterministic_seed_configurations():
     seeds = default_seed_configs()
-    assert seeds[0] == ActionConfig.zeros()
+    assert seeds[0] == ActionConfig.noop()
     for i, name in enumerate(ACTION_NAMES, start=1):
         assert seeds[i] == ActionConfig(**{n: (1.0 if n == name else 0.0) for n in ACTION_NAMES})
     assert seeds[7] == ActionConfig(*[1.0] * 6) and seeds[8] == ActionConfig(*[0.5] * 6)
@@ -97,9 +98,9 @@ def test_solver_constraints_are_shifted_by_tolerance_and_respect_raw_boundaries(
         (evaluation.g_budget - 1e-8, evaluation.g_profit - 1e-8, evaluation.g_target - 1e-8)
     )
     # Over a 1e9 budget by 5 GBP: normalized g = 5e-9 passes, raw boundary fails -> stays positive for the solver.
-    over = dataclasses.replace(result, metrics=dataclasses.replace(result.metrics, total_cost_gbp=1e9 + 5.0))
+    over = dataclasses.replace(result, metrics={**result.metrics, "total_cost_gbp": 1e9 + 5.0})
     raw_only = evaluate_constraints(over, ConstraintConfig(1e9, -1e9, 0.0))
-    assert raw_only.g_budget <= 1e-8 and not raw_only.satisfied.budget
+    assert raw_only.g_budget <= 1e-8 and not raw_only.satisfied["budget"]
     assert solver_constraint_vector(raw_only)[0] > 0.0
 
 
@@ -134,7 +135,7 @@ def test_small_real_run_returns_a_validated_frontier(small_run):
     assert result.status == "ok"
     assert_valid_frontier(result, constraints)
     candidates = result.candidates
-    assert list(candidates.columns) == [name for name, _ in CANDIDATE_COLUMNS]
+    assert list(candidates.columns) == list(OPTIMIZATION_TABLE_COLUMNS)
     assert candidates["strategy_id"].is_unique and not candidates.duplicated(subset=list(ACTION_NAMES)).any()
     assert set(candidates["strategy_id"]) == set(result.strategies)
     assert set(result.pareto["strategy_id"]) == set(candidates.loc[candidates["pareto_rank"] == 0, "strategy_id"])
@@ -154,12 +155,12 @@ def test_stored_outcomes_equal_direct_simulation(small_run):
         assert direct.strategy_id == sid
         assert direct.metrics == stored.metrics and frames_identical(direct.monthly, stored.monthly)
         row, evaluation = rows.loc[sid], evaluate_constraints(direct, constraints)
-        assert row["total_co2e_tco2e"] == direct.metrics.total_co2e_tco2e
-        assert row["total_profit_gbp"] == direct.metrics.total_profit_gbp
-        assert row["total_cost_gbp"] == direct.metrics.total_cost_gbp
+        assert row["total_co2e_tco2e"] == direct.metrics["total_co2e_tco2e"]
+        assert row["total_profit_gbp"] == direct.metrics["total_profit_gbp"]
+        assert row["total_cost_gbp"] == direct.metrics["total_cost_gbp"]
         assert (row["g_budget"], row["g_profit"], row["g_target"]) == (evaluation.g_budget, evaluation.g_profit, evaluation.g_target)
         assert bool(row["feasible"]) is evaluation.feasible
-        assert tuple(row[list(ACTION_NAMES)]) == stored.config.to_tuple()
+        assert tuple(row[list(ACTION_NAMES)]) == stored.config.as_vector()
 
 
 def test_seeded_runs_are_reproducible_and_seeds_matter(baseline, assumptions, example_constraints):
@@ -191,7 +192,7 @@ def test_a_budget_of_one_evaluates_only_the_noop(baseline, assumptions, example_
     simulator, calls = counting(simulate_strategy)
     config = OptimizerConfig(seed=1, population_size=64, generations=32, max_evaluations=1)
     result = optimize_strategies(baseline, example_constraints, assumptions=assumptions, config=config, simulator=simulator)
-    assert calls == [ActionConfig.zeros()]
+    assert calls == [ActionConfig.noop()]
     assert result.candidates["strategy_id"].tolist() == [NOOP_ID]
     assert result.status == "infeasible"  # the no-op misses the 20% reduction target
     assert result.diagnostics["evaluated_count"] == 1
@@ -202,7 +203,7 @@ def test_infeasible_search_returns_typed_empty_frontier_and_diagnostics(baseline
     result = optimize_strategies(baseline, constraints, assumptions=assumptions, config=SMALL, simulator=simulate_strategy)
     assert result.status == "infeasible"
     assert len(result.pareto) == 0
-    assert list(result.pareto.columns) == [name for name, _ in CANDIDATE_COLUMNS]
+    assert list(result.pareto.columns) == list(OPTIMIZATION_TABLE_COLUMNS)
     assert str(result.pareto["feasible"].dtype) == "bool" and str(result.pareto["pareto_rank"].dtype) == "int64"
     assert len(result.candidates) > 0 and (~result.candidates["feasible"]).all()
     assert (result.candidates["pareto_rank"] == -1).all()
@@ -233,14 +234,14 @@ def test_zero_baseline_with_positive_target_fails_before_any_simulation(assumpti
         {"generations": 0},
         {"max_evaluations": 0},
         {"seed": -1},
-        {"seed": 2**32},
+        {"seed": 1.5},
         {"population_size": 64.0},
         {"generations": True},
     ],
 )
 def test_invalid_optimizer_configs_are_rejected(kwargs):
     with pytest.raises(ContractValidationError):
-        OptimizerConfig(**kwargs)
+        val.validate_optimizer_config(OptimizerConfig(**kwargs))
 
 
 def test_inputs_are_validated_and_not_mutated(baseline, assumptions, example_constraints):
@@ -304,7 +305,7 @@ def test_nondeterministic_simulator_is_caught_by_frontier_revalidation(baseline,
         count["n"] += 1
         result = simulate_strategy(b, config, assumptions=assumptions)
         drift = count["n"] * 1e-7  # tiny, still inside every reconciliation tolerance
-        return dataclasses.replace(result, metrics=dataclasses.replace(result.metrics, total_profit_gbp=result.metrics.total_profit_gbp + drift))
+        return dataclasses.replace(result, metrics={**result.metrics, "total_profit_gbp": result.metrics["total_profit_gbp"] + drift})
 
     with pytest.raises(OptimizationError, match="not deterministic"):
         optimize_strategies(baseline, example_constraints, assumptions=assumptions, config=SMALL, simulator=drifting)
@@ -343,9 +344,9 @@ def test_mock_provenance_propagates_and_real_inputs_are_not_mock(assumptions, ex
     assert real.provenance.assumptions_id == "demo-actions-v1"
 
 
-def test_optimization_json_round_trip_and_compact_bundle(small_run):
+def test_optimization_json_round_trip_through_shared_serializers(small_run):
     _, _, _, result = small_run
-    restored = ser.optimization_result_from_dict(json.loads(ser.to_json(result)))
+    restored = val.validate_optimization_result(ser.optimization_from_dict(json.loads(ser.to_json(result))))
     assert frames_identical(restored.candidates, result.candidates) and frames_identical(restored.pareto, result.pareto)
     assert set(restored.strategies) == set(result.strategies)
     for sid, stored in result.strategies.items():
@@ -354,10 +355,6 @@ def test_optimization_json_round_trip_and_compact_bundle(small_run):
         assert restored.strategies[sid].config == stored.config
     assert dict(restored.diagnostics) == dict(result.diagnostics)
     assert (restored.run_id, restored.provenance, restored.status) == (result.run_id, result.provenance, result.status)
-    compact = ser.optimization_result_to_dict(result, strategies="frontier")
-    assert compact["strategies_included"] == "frontier"
-    assert set(compact["strategies"]) == set(result.pareto["strategy_id"]) | {NOOP_ID}
-    assert len(compact["candidates"]) == len(result.candidates)
 
 
 def test_reference_configuration_respects_budget_and_constraints(baseline, assumptions, example_constraints):

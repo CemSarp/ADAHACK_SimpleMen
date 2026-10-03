@@ -13,18 +13,21 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from src.contracts import (
+from src.contracts import validation as val
+from src.contracts.errors import ContractValidationError
+from src.contracts.identity import canonical_hash
+from src.contracts.types import (
     SCHEMA_VERSION,
-    ContractValidationError,
+    TOLERANCES,
     OptimizationResult,
     Provenance,
     RecommendationResult,
     RiskResult,
+    Tolerance,
 )
-from src.contracts.serialization import canonical_json, sha256_hex
-from src.contracts.types import RISK_TOLERANCES
-from src.contracts.validation import normalize_candidate_frame, validate_risk_result
-from src.optimization.pareto import RANK_FRONTIER, objective_tolerances
+from src.optimization.pareto import RANK_FRONTIER, normalize_candidate_frame, objective_tolerances
+
+__version__ = "ws2-recommendation-1.1.0"
 
 PROVIDER = "recommendation-service"
 DETERMINISTIC_POLICY = "deterministic_equal_weight"
@@ -99,26 +102,30 @@ def _validated_frontier(optimization: OptimizationResult) -> pd.DataFrame:
     return pareto.sort_values(["total_co2e_tco2e", "strategy_id"], kind="mergesort").reset_index(drop=True)
 
 
-def select_risk_pool(optimization: OptimizationResult, *, max_size: int = RISK_POOL_MAX_SIZE) -> tuple[str, ...]:
-    """Bounded frontier pool for Monte Carlo selection (RISK_AND_BENCHMARK_SPEC.md §2).
+def risk_pool_from_frontier(pareto: pd.DataFrame, *, max_size: int = RISK_POOL_MAX_SIZE) -> tuple[str, ...]:
+    """The single risk-pool rule (RISK_AND_BENCHMARK_SPEC.md §2), on a feasible Pareto table.
 
     Orders the frontier by total CO2e (then strategy ID), keeps both objective endpoints
     and samples the remainder evenly by that order. Returns every strategy when the
-    frontier has at most ``max_size`` points; empty when no feasible strategy exists.
+    frontier has at most ``max_size`` points. Used by recommendation and by the WS4
+    pipeline, so the strategies sent to Monte Carlo are exactly the ones selection ranks.
     """
     if isinstance(max_size, bool) or not isinstance(max_size, int) or max_size < 2:
         raise ContractValidationError("max_size", "must be an integer >= 2 (both endpoints are kept)")
-    ids = _validated_frontier(optimization)["strategy_id"].tolist()
+    ids = pareto.sort_values(["total_co2e_tco2e", "strategy_id"], kind="mergesort")["strategy_id"].tolist()
     if len(ids) <= max_size:
         return tuple(ids)
     positions = np.rint(np.linspace(0, len(ids) - 1, max_size)).astype(int)
     return tuple(ids[i] for i in positions)
 
 
+def select_risk_pool(optimization: OptimizationResult, *, max_size: int = RISK_POOL_MAX_SIZE) -> tuple[str, ...]:
+    """Risk pool for a validated optimization; empty when no feasible strategy exists."""
+    return risk_pool_from_frontier(_validated_frontier(optimization), max_size=max_size)
+
+
 def _provenance(optimization: OptimizationResult, extra: Mapping[str, Any], is_mock: bool) -> tuple[str, Provenance]:
-    input_hash = sha256_hex(
-        canonical_json({"optimization": optimization.provenance.input_hash, "run_id": optimization.run_id, **extra})
-    )
+    input_hash = canonical_hash({"optimization": optimization.provenance.input_hash, "run_id": optimization.run_id, **extra})
     provenance = Provenance(
         provider=PROVIDER,
         is_mock=is_mock,
@@ -139,7 +146,7 @@ def recommend_strategy(
     optimization: OptimizationResult,
     *,
     risk_results: Mapping[str, RiskResult] | None = None,
-    tolerance: str = "balanced",
+    tolerance: Tolerance = "balanced",
 ) -> RecommendationResult:
     """Recommend one feasible Pareto strategy, or ``None`` when the search found none.
 
@@ -149,8 +156,8 @@ def recommend_strategy(
     reported, and an empty usable pool falls back to the deterministic policy with
     ``risk_status="unavailable"`` (never claiming risk-aware selection).
     """
-    if tolerance not in RISK_TOLERANCES:
-        raise ContractValidationError("tolerance", f"must be one of {list(RISK_TOLERANCES)}; got {tolerance!r}")
+    if tolerance not in TOLERANCES:
+        raise ContractValidationError("tolerance", f"must be one of {list(TOLERANCES)}; got {tolerance!r}")
     if risk_results is not None and not isinstance(risk_results, Mapping):
         raise ContractValidationError("risk_results", "must be a mapping of strategy_id to RiskResult, or None")
     frontier = _validated_frontier(optimization)
@@ -218,17 +225,20 @@ def _usable_risk_results(
             excluded[sid] = "missing"
             continue
         try:
-            validate_risk_result(result, f"risk_results.{sid}")
+            if not isinstance(result, RiskResult):
+                raise ContractValidationError(f"risk_results.{sid}", "must be a RiskResult")
+            val.validate_risk_result(result)
         except ContractValidationError as exc:
             excluded[sid] = f"invalid: {exc}"
             continue
+        summary = result.summary
         if result.strategy_id != sid:
             excluded[sid] = f"invalid: keyed under {sid} but reports {result.strategy_id}"
         elif result.baseline_id != baseline_id:
             excluded[sid] = f"invalid: baseline {result.baseline_id} differs from {baseline_id}"
-        elif needs_joint and result.summary.joint_feasibility_probability is None:
+        elif needs_joint and summary["joint_feasibility_probability"] is None:
             excluded[sid] = "invalid: joint_feasibility_probability is null"
-        elif getattr(result.summary, co2_field) is None or getattr(result.summary, profit_field) is None:
+        elif summary[co2_field] is None or summary[profit_field] is None:
             excluded[sid] = "invalid: policy objective is null"
         else:
             usable[sid] = result
@@ -279,12 +289,11 @@ def _risk_recommendation(
 
     ids = list(usable)
     co2_field, profit_field, co2_weight = _POLICY_FIELDS[tolerance]
-    co2 = np.array([getattr(usable[sid].summary, co2_field) for sid in ids])
-    profit = np.array([getattr(usable[sid].summary, profit_field) for sid in ids])
+    co2 = np.array([float(usable[sid].summary[co2_field]) for sid in ids])
+    profit = np.array([float(usable[sid].summary[profit_field]) for sid in ids])
     threshold = JOINT_PROBABILITY_THRESHOLDS[tolerance]
-    joint = np.array(
-        [np.nan if usable[sid].summary.joint_feasibility_probability is None else usable[sid].summary.joint_feasibility_probability for sid in ids]
-    )
+    joint_values = [usable[sid].summary["joint_feasibility_probability"] for sid in ids]
+    joint = np.array([np.nan if p is None else float(p) for p in joint_values])
 
     threshold_unmet = False
     if threshold is None:
