@@ -29,6 +29,7 @@ from typing import Any, Callable, Literal, Mapping
 
 from src.contracts import serialization as ser
 from src.contracts import validation as val
+from src.contracts.errors import ContractValidationError
 from src.contracts.types import (
     ActionAssumptions,
     ActionConfig,
@@ -136,7 +137,11 @@ class RealOptimizerProvider:
 
 
 def _factory_provider(module_name: str, factory: str) -> object:
-    provider = _load_attr(module_name, factory)()
+    create = _load_attr(module_name, factory)
+    try:
+        provider = create()
+    except ContractValidationError as exc:  # defined config failure only; other errors surface
+        raise ProviderUnavailable(f"{module_name}.{factory}() configuration is invalid: {exc}") from exc
     info = getattr(provider, "info", None)
     if not isinstance(info, ProviderInfo):
         raise ProviderUnavailable(f"{module_name}.{factory}() must return a provider with info: ProviderInfo")

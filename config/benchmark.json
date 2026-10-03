@@ -1,0 +1,18 @@
+{
+  "source": {
+    "source_id": "synthetic-peers-v1",
+    "kind": "csv",
+    "snapshot_path": "data/benchmark.csv",
+    "metadata_path": "data/benchmark_metadata.json",
+    "is_synthetic": true
+  },
+  "config": {
+    "industry": "technology",
+    "scope_coverage": "scope1_scope2_scope3",
+    "scope2_method": "market_based_demo",
+    "min_peers": 10,
+    "max_period_end_gap_months": 24,
+    "comparison_basis": "forecast_vs_historical_peers",
+    "exclude_entity_ids": []
+  }
+}

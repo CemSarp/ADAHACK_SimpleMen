@@ -1,0 +1,11 @@
+peer_id,industry,period_start,period_end,revenue_gbp,total_co2e_tco2e,scope_coverage,scope2_method,intensity_tco2e_per_million_gbp,source_id,is_synthetic
+synthetic-peer-01,technology,2026-01-01,2026-12-31,10000000,400,scope1_scope2_scope3,market_based_demo,40,synthetic-peers-v1,True
+synthetic-peer-02,technology,2026-01-01,2026-12-31,10000000,600,scope1_scope2_scope3,market_based_demo,60,synthetic-peers-v1,True
+synthetic-peer-03,technology,2026-01-01,2026-12-31,10000000,800,scope1_scope2_scope3,market_based_demo,80,synthetic-peers-v1,True
+synthetic-peer-04,technology,2026-01-01,2026-12-31,10000000,900,scope1_scope2_scope3,market_based_demo,90,synthetic-peers-v1,True
+synthetic-peer-05,technology,2026-01-01,2026-12-31,10000000,1000,scope1_scope2_scope3,market_based_demo,100,synthetic-peers-v1,True
+synthetic-peer-06,technology,2026-01-01,2026-12-31,10000000,1100,scope1_scope2_scope3,market_based_demo,110,synthetic-peers-v1,True
+synthetic-peer-07,technology,2026-01-01,2026-12-31,10000000,1200,scope1_scope2_scope3,market_based_demo,120,synthetic-peers-v1,True
+synthetic-peer-08,technology,2026-01-01,2026-12-31,10000000,1400,scope1_scope2_scope3,market_based_demo,140,synthetic-peers-v1,True
+synthetic-peer-09,technology,2026-01-01,2026-12-31,10000000,1600,scope1_scope2_scope3,market_based_demo,160,synthetic-peers-v1,True
+synthetic-peer-10,technology,2026-01-01,2026-12-31,10000000,2000,scope1_scope2_scope3,market_based_demo,200,synthetic-peers-v1,True

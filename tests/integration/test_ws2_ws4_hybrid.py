@@ -199,8 +199,8 @@ def test_infeasible_result_has_no_recommendation_or_selection(state, hybrid, req
 
 def test_hybrid_provenance_names_every_provider(hybrid, bundle):
     assert hybrid.provenance_summary() == (
-        "Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: unavailable · SHAP: unavailable · "
-        "Benchmark: unavailable"
+        "Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: WS3 · SHAP: unavailable · "
+        "Benchmark: WS3"
     )
     kinds = {slot: (info.kind, info.is_mock) for slot, info in bundle.providers.items()}
     assert kinds == {"forecast": ("fixture", True), "simulator": ("real", False), "optimizer": ("real", False)}
@@ -216,19 +216,19 @@ def test_real_mode_fails_explicitly_while_ws1_is_missing():
     assert "src.forecasting.provider is not implemented yet" in str(exc.value)
 
 
-def test_unavailable_optional_capabilities_do_not_break_startup_or_analysis(hybrid, request_demo):
-    assert hybrid.risk is None and hybrid.shap is None and hybrid.benchmark is None
+def test_ws3_optional_capabilities_do_not_break_startup_or_analysis(hybrid, request_demo):
+    assert hybrid.risk is not None and hybrid.shap is None and hybrid.benchmark is not None
     caps = hybrid.capabilities
-    assert not caps.risk_available and not caps.benchmark_available and caps.shap_available_targets == ()
-    assert "src.risk.provider is not implemented yet" in hybrid.unavailable["risk"]
-    assert "src.benchmarking.provider is not implemented yet" in hybrid.unavailable["benchmark"]
+    assert caps.risk_available and caps.benchmark_available and caps.shap_available_targets == ()
     assert hybrid.unavailable["shap"] == "disabled by configuration"
     request = replace(request_demo, risk_enabled=True, benchmark_enabled=True, explanation_enabled=True)
     result = run_analysis(request, services=hybrid)
     assert result.optimization.status == "ok"
-    assert result.recommendation.risk_status == "unavailable"  # never claims risk-aware selection
-    assert result.recommendation.policy == "deterministic_equal_weight"
-    assert any("Risk is unavailable" in w for w in result.warnings)
+    assert result.risk_results
+    assert result.benchmark.status == "ok" and result.benchmark.is_synthetic
+    assert result.recommendation.risk_status == "evaluated"  # evaluated, but not used by the deterministic policy
+    assert result.recommendation.policy == "risk_balanced"
+    assert not any("Risk is unavailable" in w or "Benchmark is unavailable" in w for w in result.warnings)
 
 
 def test_dashboard_resulting_share_matches_ws2_engine(hybrid):

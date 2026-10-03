@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from src.contracts import serialization as ser
@@ -192,3 +194,67 @@ def test_hybrid_discovers_real_risk_provider_and_pipeline_matches_pareto(request
     assert other.info.version != info.version
     swapped = create_services(mode="hybrid", provider_overrides={"risk": other})
     assert services_key(swapped) != services_key(services)
+
+
+def _stub(rows):
+    """Hand-authored trial metrics: (co2, profit, cost, reduction ratio or None)."""
+    it = iter(rows)
+
+    def stub(baseline, config, *, assumptions):
+        co2, profit, cost, ratio = next(it)
+        return SimpleNamespace(provenance=SimpleNamespace(is_mock=True), metrics={
+            "total_co2e_tco2e": co2, "total_profit_gbp": profit, "total_cost_gbp": cost, "co2_reduction_ratio": ratio})
+
+    return stub
+
+
+def test_single_trial():
+    s = _run(config=RiskConfig(seed=9, n_simulations=1)).summary
+    assert s["co2_p05_tco2e"] == s["co2_mean_tco2e"] == s["co2_p95_tco2e"]
+    assert s["profit_p05_gbp"] == s["profit_mean_gbp"] == s["profit_p95_gbp"]
+    assert s["cost_mean_gbp"] == s["cost_p95_gbp"]
+    assert s["target_probability"] in (0.0, 1.0) and s["target_probability_mc_standard_error"] == 0.0
+
+
+def test_zero_co2_target_rules_and_losses():
+    zero = ConstraintConfig(budget_gbp=100.0, min_total_profit_gbp=0.0, min_co2_reduction_ratio=0.0)
+    # Undefined ratio (zero CO2) with a zero target counts as met; losses are valid outcomes.
+    s = _run(config=RiskConfig(seed=0, n_simulations=2), constraints=zero,
+             simulator=_stub([(0.0, -500.0, 10.0, None), (0.0, 250.0, 10.0, None)])).summary
+    assert s["target_probability"] == 1.0 and s["co2_mean_tco2e"] == 0.0
+    assert s["profit_mean_gbp"] == -125.0 and s["profit_p05_gbp"] < 0
+    assert s["profit_floor_probability"] == 0.5 and s["joint_feasibility_probability"] == 0.5
+    assert all(math.isfinite(v) for v in s.values())
+    # Undefined ratio with a positive target is an invalid trial, never a silent pass or fail.
+    with pytest.raises(RiskError, match="undefined"):
+        _run(config=RiskConfig(seed=0, n_simulations=1), simulator=_stub([(0.0, 1.0, 0.0, None)]))
+
+
+def test_compared_strategies_share_common_trials():
+    seen: dict[str, list] = {"a": [], "b": []}
+    mock = BehavioralMockSimulator()
+
+    def recorder(key):
+        def sim(baseline, config, *, assumptions):
+            seen[key].append(ser.assumptions_to_dict(assumptions))
+            return mock.simulate(baseline, config, assumptions=assumptions)
+        return sim
+
+    config = RiskConfig(seed=21, n_simulations=15)
+    a = _run(fixtures.action_config(), config=config, simulator=recorder("a"))
+    b = _run(ActionConfig(*([0.5] * 6)), config=config, simulator=recorder("b"))
+    assert a.strategy_id != b.strategy_id
+    assert seen["a"] == seen["b"]  # identical sampled assumptions trial by trial, IDs included
+
+
+def test_saved_mock_simulator_sample_is_reproducible():
+    from src.contracts.types import RiskResult
+    from src.contracts.validation import validate_risk_result
+
+    path = Path(__file__).resolve().parents[2] / "carbonopt-ai-docs/docs/handoffs/ws3/risk_sample_mock_simulator.json"
+    saved = validate_risk_result(ser.from_json(RiskResult, path.read_text()))
+    assert saved.provenance.is_mock and saved.n_simulations == len(saved.samples) == 1000
+    fresh = _run(config=RiskConfig(seed=42, n_simulations=1000, retain_samples=True))
+    assert fresh.strategy_id == saved.strategy_id and fresh.provenance.input_hash == saved.provenance.input_hash
+    assert fresh.summary == pytest.approx(saved.summary, rel=1e-12)
+    pd.testing.assert_frame_equal(fresh.samples, saved.samples)

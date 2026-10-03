@@ -1,0 +1,15 @@
+{
+  "source_id": "synthetic-peers-v1",
+  "source_url": null,
+  "retrieved_at": "2026-10-03T00:00:00Z",
+  "snapshot_id": "synthetic-peer-snapshot-v1",
+  "is_synthetic": true,
+  "original_currency": "GBP",
+  "original_emissions_unit": "tco2e",
+  "reporting_frequency": "annual",
+  "fx_method": "not_required",
+  "licence_note": "Synthetic example supplied with documentation.",
+  "transforms": [],
+  "exclusions": [],
+  "schema_version": "1.0.0"
+}

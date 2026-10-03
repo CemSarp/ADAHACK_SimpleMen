@@ -54,5 +54,5 @@ class MonteCarloRiskProvider:
         )
 
 
-def create_risk_provider(path: str | Path = DEFAULT_UNCERTAINTY_PATH) -> MonteCarloRiskProvider:
-    return MonteCarloRiskProvider(load_uncertainty(path))
+def create_risk_provider(path: str | Path | None = None) -> MonteCarloRiskProvider:
+    return MonteCarloRiskProvider(load_uncertainty(path or DEFAULT_UNCERTAINTY_PATH))

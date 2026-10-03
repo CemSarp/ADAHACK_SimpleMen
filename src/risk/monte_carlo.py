@@ -136,7 +136,16 @@ class UncertaintySpec:
 
 
 def load_uncertainty(path: str | Path = DEFAULT_UNCERTAINTY_PATH) -> UncertaintySpec:
-    return UncertaintySpec.from_dict(json.loads(Path(path).read_text()))
+    path = Path(path)
+    try:
+        data = json.loads(path.read_text())
+    except OSError as exc:
+        raise ContractValidationError("uncertainty", f"cannot read {path.name}: {exc.strerror}") from exc
+    except json.JSONDecodeError as exc:
+        raise ContractValidationError("uncertainty", f"{path.name} is not valid JSON: {exc.msg}") from exc
+    if not isinstance(data, Mapping):
+        raise ContractValidationError("uncertainty", f"{path.name} must contain a JSON object")
+    return UncertaintySpec.from_dict(data)
 
 
 def sample_multipliers(spec: UncertaintySpec, seed: int, n: int) -> np.ndarray:

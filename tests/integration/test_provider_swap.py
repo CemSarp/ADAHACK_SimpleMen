@@ -96,10 +96,11 @@ def test_real_mode_binds_injected_non_mock_providers(request_ok):
         "simulator": _as_real(BehavioralMockSimulator(), "simulator"),
         "optimizer": _as_real(BehavioralMockOptimizer(), "optimizer"),
     })
-    # Optional slots without real providers are disabled, never mocked. WS3 risk now exists.
-    assert services.shap is None and services.benchmark is None
-    assert "not implemented yet" in services.unavailable["benchmark"]
+    # Optional slots without real providers are disabled, never mocked. WS3 risk and benchmark now exist.
+    assert services.shap is None
+    assert "not implemented yet" in services.unavailable["shap"]
     assert services.capabilities.risk_available and services.providers["risk"].kind == "real"
+    assert services.capabilities.benchmark_available and services.providers["benchmark"].kind == "real"
     bundle = run_analysis(replace(request_ok, risk_enabled=True), services=services)
     assert not services.is_mock and set(bundle.providers) == {"forecast", "simulator", "optimizer", "risk"}
     assert bundle.risk_results and not any("Risk is unavailable" in w for w in bundle.warnings)

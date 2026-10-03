@@ -39,15 +39,14 @@ def _texts(elements) -> list[str]:
     return [e.value for e in elements]
 
 
-def test_hybrid_startup_labels_every_provider_and_disabled_capability(app):
+def test_hybrid_startup_labels_every_provider_and_disabled_shap(app):
     assert app.selectbox(key="co_widget_preset").value == DEFAULT_HYBRID_PRESET
     assert any(w.startswith("**PARTIALLY MOCKED — hybrid mode.**") for w in _texts(app.warning))
     assert not any("All bound providers are real" in s for s in _texts(app.success))
-    assert "Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: unavailable · SHAP: unavailable · " \
-           "Benchmark: unavailable" in _texts(app.caption)
+    assert "Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: WS3 · SHAP: unavailable · " \
+           "Benchmark: WS3" in _texts(app.caption)
     infos = _texts(app.info)
-    assert "Risk is unavailable: src.risk.provider is not implemented yet." in infos
-    assert "Benchmark is unavailable: src.benchmarking.provider is not implemented yet." in infos
+    assert not any("Risk is unavailable:" in s or "Benchmark is unavailable:" in s for s in infos)
 
 
 def test_optimize_consumes_current_inputs_and_selects_the_recommendation(app):
