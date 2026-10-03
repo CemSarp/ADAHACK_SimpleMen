@@ -15,6 +15,30 @@ python3.11 -m venv .venv
 
 Mock output is visibly labelled. `CARBONOPT_PROVIDER_MODE=real` fails with a clear error until the real providers exist.
 
+### Assistant (chatbot)
+
+A floating assistant button sits at the bottom-left of the dashboard. By default it uses a labelled **MOCK MODEL** (rule-based, offline). The real language model is **not** run on your machine: it is a separate remote Ollama server running `llama3.1:8b`, and this repository only contains the client. No weights are downloaded and no server is installed by this project.
+
+Configuration is by environment variables (copy [`.env.example`](.env.example); the app does not auto-load it, so export the variables in your shell):
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `CHATBOT_PROVIDER` | `mock` or `ollama` | `mock` |
+| `OLLAMA_BASE_URL` | Remote endpoint, required for `ollama` | none |
+| `OLLAMA_MODEL` | Model tag | `llama3.1:8b` |
+| `OLLAMA_TIMEOUT_SECONDS` / `OLLAMA_MAX_OUTPUT_TOKENS` | Limits | `60` / `512` |
+| `OLLAMA_API_KEY` | Optional gateway bearer token | none |
+
+```bash
+# mock model (default)
+.venv/bin/python -m streamlit run app.py
+
+# remote model, once an endpoint is supplied
+CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<your-ollama-host> .venv/bin/python -m streamlit run app.py
+```
+
+Use **Check connection** in the panel to test the endpoint. Remote failures are shown as errors; the mock is never used as a fallback. Details: [docs/CHATBOT_IMPLEMENTATION.md](docs/CHATBOT_IMPLEMENTATION.md).
+
 ## Getting Started
 
 ### Prerequisites

@@ -101,3 +101,48 @@ def test_real_mode_reports_missing_p0_providers_without_crashing_the_app():
         """
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
+
+
+def test_chat_modules_import_and_mock_chat_runs_offline_without_optional_libraries():
+    proc = _run(
+        """
+        import src.llm, src.llm.providers, src.llm.assistant, src.llm.tools
+        assert "streamlit" not in sys.modules, "src.llm must not import Streamlit"
+        assert "requests" not in sys.modules
+        from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig
+        from src.integration import create_services, run_analysis
+        from src.llm.assistant import TurnRecord, run_turn
+        from src.llm.config import ChatbotConfig
+        from src.llm.context import AnalysisContext
+        from src.llm.providers import create_chat_provider
+        provider = create_chat_provider(ChatbotConfig.from_env({}))
+        assert provider.info.is_mock
+        services = create_services(mode="mock")
+        req = AnalysisRequest(company_id="demo-company", horizon_months=12,
+                              constraints=ConstraintConfig(500000.0, 1000000.0, 0.2), optimizer_config=OptimizerConfig(max_evaluations=64))
+        a = run_analysis(req, services=services)
+        ctx = AnalysisContext(services, req, a.baseline, a, None)
+        out = run_turn(provider=provider, history=[], user_text="Show the baseline forecast.", context=ctx, record=TurnRecord())
+        assert "1,200.0 tCO2e" in out.text
+        print("ok")
+        """
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "ok"
+
+
+def test_ollama_provider_makes_no_request_until_called():
+    proc = _run(
+        """
+        from src.llm.config import ChatbotConfig
+        from src.llm.providers import create_chat_provider
+        p = create_chat_provider(ChatbotConfig.from_env({"CHATBOT_PROVIDER": "ollama", "OLLAMA_BASE_URL": "http://llm.example.test"}))
+        assert not p.info.is_mock
+        try:
+            p.check_connection()
+        except RuntimeError as exc:  # the guard's network error is surfaced as a typed provider error, not hidden
+            print("failed-visibly")
+        """
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "failed-visibly"

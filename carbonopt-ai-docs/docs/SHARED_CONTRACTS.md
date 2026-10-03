@@ -206,6 +206,10 @@ Services contains forecast, simulator, optimizer, risk, benchmark, SHAP and narr
 
 Capabilities include `supported_horizons`, `risk_available`, `shap_available_targets`, `benchmark_available`, `narrative_available` and per-provider `is_mock`. Forecast provider binds the trusted model/history/driver policy but returns the public BaselineBundle. Shared consumer code never loads a model artifact directly.
 
+### Chatbot additions (contract 1.x, additive; require producer/consumer review)
+
+`ToolResult(status, tool_name, validated_arguments, data, error)` and `NarrativeResult(status, text, source_run_id, provider, is_template)` are defined in `src/contracts/types.py` with the fields listed in the Tool/Narrative paragraph of DATA_SCHEMAS.md. `status` for tools is `ok`, `error` or `unavailable`; `data` is a plain JSON-safe mapping built from serialized public results. The model-provider boundary (`ChatModelProvider`: `chat(messages, tools) -> ModelResponse`, `check_connection()`) lives in `src/llm/providers.py`, not in contracts, because it is WS4-internal. `execute_tool(name, arguments, *, context, services)` binds `AnalysisContext` on the server side; `explain_analysis(analysis, *, provider=None)` has a deterministic template implementation. No existing field changed. See [docs/CHATBOT_IMPLEMENTATION.md](../../docs/CHATBOT_IMPLEMENTATION.md). Review status: not reviewed by WS1-WS3.
+
 ## 4. Errors and status results
 
 | Condition | Defined behavior |
