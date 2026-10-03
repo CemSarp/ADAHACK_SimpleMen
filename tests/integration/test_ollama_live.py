@@ -1,7 +1,7 @@
 """Opt-in remote smoke check. Skipped unless RUN_OLLAMA_LIVE_SMOKE=1 and an endpoint is configured.
 
     RUN_OLLAMA_LIVE_SMOKE=1 CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<host> \
-        .venv/bin/python -m pytest tests/integration/test_ollama_live.py -q
+        python -m pytest tests/integration/test_ollama_live.py -q
 
 Never run in CI by default. A pass here is the first real evidence of live model
 behavior; until then the remote path is verified only against a fake transport.
