@@ -27,8 +27,8 @@ def summarize_payload(payload: Mapping[str, Any]) -> str:
     """payload = {"status", "tool_name", "data", "error"} as sent to the model."""
     status = payload.get("status")
     if status != "ok":
-        label = "currently unavailable" if status == "unavailable" else "could not be completed"
-        return f"That analysis is {label}. Review your settings or try again."
+        label = "is currently unavailable" if status == "unavailable" else "could not be completed"
+        return f"That analysis {label}. Review your settings or try again."
     data = payload.get("data") or {}
     mock = " (mock backend output)" if data.get("is_mock") else ""
     kind = data.get("kind")

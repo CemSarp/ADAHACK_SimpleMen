@@ -260,3 +260,25 @@ def test_unsupported_horizon_is_validation_error(request_ok, services):
     st.sync_services(services)
     st.run_optimize(replace(request_ok, horizon_months=36), services)
     assert st.status == VALIDATION_ERROR and st.error.error_type == "UnsupportedHorizon"
+
+
+def test_transient_forecast_failure_can_retry(request_ok, monkeypatch):
+    forecast = CountingForecast()
+    original = forecast.get_baseline
+
+    def fail_once(**kwargs):
+        if forecast.calls == 0:
+            forecast.calls += 1
+            raise ForecastError("temporary forecast failure")
+        return original(**kwargs)
+
+    monkeypatch.setattr(forecast, "get_baseline", fail_once)
+    services = create_services(mode="mock", provider_overrides={"forecast": forecast})
+    state = DashboardState({})
+    state.sync_services(services)
+    assert state.ensure_baseline(request_ok, services) is None
+    assert state.ensure_baseline(request_ok, services) is not None
+    assert state.baseline_error is None
+    assert forecast.calls == 2
+    state.ensure_baseline(request_ok, services)
+    assert forecast.calls == 2

@@ -72,7 +72,7 @@ def test_model_comparison_completes_without_replacing_planning_forecast(monkeypa
     app.run()
     assert not app.exception
     assert any("Comparison complete" in e.value for e in app.success)
-    assert (trainer.OUTPUT_DIR / "emissions" / "summary.json").exists()
-    assert (trainer.OUTPUT_DIR / "profit" / "summary.json").exists()
+    assert (job.output_dir / "emissions" / "summary.json").exists()
+    assert (job.output_dir / "profit" / "summary.json").exists()
     assert app.session_state["cos_baseline"].model_id == baseline.model_id
     assert app.session_state["cos_baseline"].totals == baseline.totals

@@ -154,7 +154,9 @@ def test_mock_end_to_end_turn_grounds_text_in_tool_data(ctx):
     assert "1,200.0 tCO2e" in out.text and "£1,200,000" in out.text and "mock backend output" in out.text
     out = run_turn(provider=MockChatProvider(), history=[], user_text="How likely are we to meet our target?", context=ctx,
                    record=TurnRecord())
-    assert "failed" in out.text and "UnsupportedMockInput" in out.text and "%" not in out.text  # no invented probability
+    assert "could not be completed" in out.text and "%" not in out.text  # no invented probability
+    assert "UnsupportedMockInput" not in out.text  # internal diagnostics stay out of user copy
+    assert "UnsupportedMockInput" in out.results[0].error
 
 
 def test_explain_analysis_template_uses_only_bundle_values(mock_services, request_ok):

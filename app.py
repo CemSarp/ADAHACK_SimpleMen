@@ -16,6 +16,7 @@ from src.contracts.errors import CarbonOptError
 from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig
 from src.dashboard import components
 from src.dashboard.chat_ui import render_chat
+from src.dashboard.grounding_panel import render_grounding_panel
 from src.dashboard.state import DashboardState
 from src.dashboard.theme import apply_theme
 from src.integration.services import Services, create_services
@@ -136,6 +137,7 @@ def main() -> None:
         with st.spinner("Optimizing…"):
             state.run_optimize(request, services)
 
+    render_grounding_panel()
     components.company_context(state, dark)
     if state.baseline is not None:
         with st.container(border=True):

@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from . import trainer
-from .eda import ACCENT, BG, GREEN, GRID, INK, MUTED, PANEL, PIXEL_BODY, PIXEL_HEAD
+from .theme import ACCENT, BG, GREEN, GRID, INK, MUTED, PANEL, BODY_FONT, HEAD_FONT
 
 TREE_MODELS = ("XGBoost", "LightGBM", "RandomForest")
 HORIZONS = {"ALL MONTHS": None, "MONTH 1": 1, "MONTH 2": 2, "MONTH 3": 3}
@@ -26,14 +26,14 @@ _CSS = f"""
   padding: .8rem 1rem .6rem 1rem; border-radius: 0; margin: .25rem 0 1rem 0;
 }}
 .st-key-shap_panel [data-baseweb="select"] > div {{
-  background: {PANEL}; border: 1px solid {GREEN}; border-radius: 0; font-family: {PIXEL_BODY}; font-size: 18px;
+  background: {PANEL}; border: 1px solid {GREEN}; border-radius: 0; font-family: {BODY_FONT}; font-size: 18px;
   color: {INK}; min-height: 32px;
 }}
 .st-key-shap_panel [data-baseweb="select"] svg {{ fill: {GREEN}; }}
 .st-key-shap_panel [data-testid="stSlider"] div[role="slider"] {{ background: {GREEN}; border-radius: 0; }}
 .st-key-shap_panel [data-testid="stSlider"] [data-testid="stTickBarMin"],
 .st-key-shap_panel [data-testid="stSlider"] [data-testid="stTickBarMax"],
-.st-key-shap_panel [data-testid="stSliderThumbValue"] {{ font-family: {PIXEL_BODY}; font-size: 18px; color: {GREEN}; }}
+.st-key-shap_panel [data-testid="stSliderThumbValue"] {{ font-family: {BODY_FONT}; font-size: 18px; color: {GREEN}; }}
 </style>
 """
 
@@ -58,10 +58,10 @@ def _silence_joblib_config_warning() -> None:
     warnings.filterwarnings("ignore", message=".*sklearn.utils.parallel.delayed.*")
 
 
-def _summaries() -> dict[str, dict]:
+def _summaries(job: trainer.TrainingJob) -> dict[str, dict]:
     out = {}
     for key in trainer.TARGETS:
-        path = trainer.OUTPUT_DIR / key / "summary.json"
+        path = job.output_dir / key / "summary.json"
         if path.exists():
             out[key] = json.loads(path.read_text(encoding="utf-8"))
     return out
@@ -99,7 +99,7 @@ def _units(rel, level, scale, positive: bool):
 
 
 def _style(fig: go.Figure, height: int) -> go.Figure:
-    font = dict(family=PIXEL_BODY, color=INK, size=15)
+    font = dict(family=BODY_FONT, color=INK, size=15)
     fig.update_layout(
         height=height, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor=BG, plot_bgcolor=BG, font=font,
         hoverlabel=dict(bgcolor=PANEL, bordercolor=GREEN, font=font), legend=dict(orientation="h", y=1.15, x=0, font=font))
@@ -125,7 +125,7 @@ def shap_explorer() -> None:
             return _hint("TRAIN MODELS FIRST. SHAP EXPLAINS THE TRAINED TREE MODELS")
         if job.running:
             return _hint("WAITING FOR TRAINING TO FINISH")
-        summaries = _summaries() if job.returncode == 0 else {}
+        summaries = _summaries(job) if job.returncode == 0 else {}
         if not summaries:
             return _hint("NO TRAINING RESULTS AVAILABLE")
 
@@ -188,7 +188,7 @@ def shap_explorer() -> None:
             hovertemplate="%{y}<br>mean |SHAP| %{x:.4f}<extra></extra>"))
         _style(fig, 40 + 24 * len(shown)).update_layout(showlegend=False)
         fig.update_yaxes(autorange="reversed")
-        fig.update_xaxes(title=dict(text="MEAN |SHAP| (MODEL UNITS)", font=dict(family=PIXEL_BODY, size=15)))
+        fig.update_xaxes(title=dict(text="MEAN |SHAP| (MODEL UNITS)", font=dict(family=BODY_FONT, size=15)))
         st.html('<div class="tr-label">MOST IMPORTANT FEATURES</div>')
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key="shap_importance_chart")
 
@@ -202,8 +202,8 @@ def shap_explorer() -> None:
                               hovertemplate="%{x} features<br>%{y:+.1f}% vs full<extra></extra>")
         curve.add_vline(x=k, line=dict(color=ACCENT, dash="dot", width=2))
         _style(curve, 230)
-        curve.update_xaxes(title=dict(text="FEATURES ADDED, MOST IMPORTANT FIRST", font=dict(family=PIXEL_BODY, size=15)))
-        curve.update_yaxes(title=dict(text="FORECAST VS FULL MODEL (%)", font=dict(family=PIXEL_BODY, size=15)))
+        curve.update_xaxes(title=dict(text="FEATURES ADDED, MOST IMPORTANT FIRST", font=dict(family=BODY_FONT, size=15)))
+        curve.update_yaxes(title=dict(text="FORECAST VS FULL MODEL (%)", font=dict(family=BODY_FONT, size=15)))
         st.html('<div class="tr-label">HOW THE FORECAST BUILDS UP</div>')
         st.plotly_chart(curve, width="stretch", config={"displayModeBar": False}, key="shap_curve_chart")
 

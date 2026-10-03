@@ -136,6 +136,23 @@ All providers talk through typed, validated contracts in `src/contracts/`, which
 | Monthly baseline vs scenarios | Month-by-month emissions and profit |
 | Decision confidence | Uncertainty probabilities, peer comparison, risk preferences and existing forecast explanations when available |
 | Assumptions and export | Expandable action assumptions and costs, plus a full analysis download |
+| Real data and sources | Public reference, official-factor scenario and source links (below) |
+
+### Real data and sources (what is real, what is not)
+
+The **Real data and sources** expander is self-contained and never feeds the optimizer:
+
+| Item | Label | Source, date |
+|---|---|---|
+| Wincanton FY2024 energy, emissions, revenue (annual totals) | Reported historical, 2023-04-01 to 2024-03-31 | [Wincanton Annual Review 2024](https://win-12731-s3.s3.eu-west-2.amazonaws.com/assets/7317/2796/5575/Wincanton_Annual_Review_2024.pdf), printed pp. 1, 5, 24–25; snapshot `data/public/wincanton_fy2024.json`, retrieved 2026-10-03 |
+| UK electricity factor 0.13096 kgCO2e/kWh | Official factor (ID `7_400_4000_5_1`, row 3066, v1.2) | [GOV.UK conversion factors 2026](https://www.gov.uk/government/publications/greenhouse-gas-reporting-conversion-factors-2026), July-revised flat workbook; `data/public/uk_factors_2026.json` |
+| Electricity-reduction calculator | Scenario: 2026 factor × FY2024 activity; reduction and £0.25/kWh tariff are assumptions | Default 10% → **1,014.74 tCO2e**, gross energy-cost saving before capex/opex |
+| GB grid forecast, one-hour 100 kWh task | Forecast gCO2/kWh (GB average), kgCO2; scheduling illustration only, never added to corporate totals | [Carbon Intensity API](https://carbon-intensity.github.io/api-definitions/) `fw48h` (NESO, CC BY 4.0). Startup shows the **Recorded example** `data/public/grid_forecast_snapshot.json` (fetched 2026-10-03 16:02 UTC) as a historical replay; **Refresh grid forecast** makes one 5 s request (cached 30 min) and only then offers upcoming windows. A failed refresh shows an error and keeps the recorded example |
+| Cloud | Planned | [Cloud Carbon Footprint](https://github.com/cloud-carbon-footprint/cloud-carbon-footprint) is the future method; current cloud figures are illustrative |
+
+Wincanton is a public reference, not a customer. The six-action optimizer still analyses the configured company on synthetic, uncalibrated history and illustrative action economics; nothing in the panel changes its inputs. No network access is needed at startup.
+
+One-minute demo: open **Real data and sources** → show the report link and 77,485 MWh non-transport electricity → move the reduction slider (10% ≈ 1,014.74 tCO2e) → press **Refresh grid forecast** and say whether the chart is live or recorded → scroll to the optimizer and describe its inputs as illustrative.
 
 ---
 

@@ -127,7 +127,7 @@ class DashboardState:
     def ensure_baseline(self, request: AnalysisRequest, services: Services) -> BaselineBundle | None:
         """Load (or reuse) the forecast baseline for company + horizon."""
         key = cache_keys.baseline_key(request.company_id, request.horizon_months, services)
-        if self._get("baseline_key") == key:
+        if self._get("baseline_key") == key and self.baseline is not None:
             return self.baseline
         self._set("baseline_key", key)
         for name in ("baseline", "backtest", "history", "baseline_error", "baseline_warnings"):

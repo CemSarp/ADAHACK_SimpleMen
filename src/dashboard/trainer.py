@@ -7,7 +7,7 @@ import importlib.util
 import json
 import os
 import re
-import shutil
+import tempfile
 import subprocess
 import sys
 import threading
@@ -77,9 +77,10 @@ class TrainingJob:
         self.started = time.time()
         self.finished: float | None = None
         self.returncode: int | None = None
-        shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        self.output_dir = Path(tempfile.mkdtemp(prefix="comparison-", dir=OUTPUT_DIR))
         cmd = [sys.executable, "-u", "-m", "ml_core.modelling", "--models", *models,
-               "--data", str(DATA_PATH), "--output-dir", str(OUTPUT_DIR)]
+               "--data", str(DATA_PATH), "--output-dir", str(self.output_dir)]
         self.proc = subprocess.Popen(
             cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8",
             errors="replace", bufsize=1, env={**os.environ, "PYTHONIOENCODING": "utf-8", "MPLBACKEND": "Agg"},
@@ -151,7 +152,7 @@ def _report(job: TrainingJob) -> None:
     timings = job.timings()
     shown = False
     for key in TARGETS:
-        path = OUTPUT_DIR / key / "summary.json"
+        path = job.output_dir / key / "summary.json"
         if not path.exists():
             continue
         shown = True

@@ -1,0 +1,19 @@
+{
+  "publication": "Greenhouse gas reporting: conversion factors 2026",
+  "publication_url": "https://www.gov.uk/government/publications/greenhouse-gas-reporting-conversion-factors-2026",
+  "source_url": "https://assets.publishing.service.gov.uk/media/6a6c9748862aaf18d9c62ac9/ghg-conversion-factors-2026-flat-format-revised.xlsx",
+  "year": 2026,
+  "version": "1.2",
+  "retrieved_at": "2026-10-03",
+  "license": "Contains public sector information licensed under the Open Government Licence v3.0 (DESNZ / GOV.UK).",
+  "factors": {
+    "uk_electricity": {
+      "label": "UK electricity, total GHG",
+      "value": 0.13096,
+      "unit": "kgCO2e/kWh",
+      "factor_id": "7_400_4000_5_1",
+      "sheet": "Factors by Category",
+      "row": 3066
+    }
+  }
+}
