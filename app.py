@@ -18,6 +18,7 @@ import streamlit as st
 from src.contracts.errors import ProviderConfigurationError
 from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig
 from src.dashboard import components
+from src.dashboard.chat_ui import render_chat
 from src.dashboard.state import DashboardState
 from src.integration.services import (
     DEFAULT_HYBRID_PRESET,
@@ -158,20 +159,22 @@ def main() -> None:
     dark = _is_dark()
     components.provenance_banner(services)
     components.company_context(state, dark)
-    if state.baseline is None:
-        st.stop()
-    components.backtest_panel(state, dark)
-    st.divider()
-    components.optimization_panel(state, services, request, dark)
-    components.selected_strategy_panel(state, services, request)
-    st.divider()
-    components.whatif_panel(state, services, request)
-    components.monthly_panel(state, dark)
-    st.divider()
-    components.optional_panels(state, services, request, dark)
-    st.divider()
-    components.assumptions_panel(services.assumptions, services.providers["simulator"].is_mock)
-    components.provenance_details(state, services)
+    if state.baseline is not None:
+        components.backtest_panel(state, dark)
+        st.divider()
+        components.optimization_panel(state, services, request, dark)
+        components.selected_strategy_panel(state, services, request)
+        st.divider()
+        components.whatif_panel(state, services, request)
+        components.monthly_panel(state, dark)
+        st.divider()
+        components.optional_panels(state, services, request, dark)
+        st.divider()
+        components.assumptions_panel(services.assumptions, services.providers["simulator"].is_mock)
+        components.provenance_details(state, services)
+    # Reserve room so the floating bubble never covers the Optimize button.
+    st.sidebar.html('<div style="height:88px"></div>')
+    render_chat(state, services, request, dark=dark)
 
 
 main()

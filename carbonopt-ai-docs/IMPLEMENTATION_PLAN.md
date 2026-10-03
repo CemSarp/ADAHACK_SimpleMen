@@ -30,7 +30,7 @@ This is a dependency and acceptance order. It does not require four developers t
 | Risk | NumPy; SciPy only if required | P1 | WS3 |
 | Forecast explainability | SHAP | P1 | WS1 |
 | External adapters | requests, normalized CSV snapshots | P1 | WS3 |
-| LLM and tool chat | Optional provider behind an adapter | P2 | WS4 |
+| LLM and tool chat | Floating Streamlit assistant; model provider behind an adapter: remote Ollama server running `llama3.1:8b` (not on developer machines), explicit mock for development/tests | P2 | WS4 |
 | Tests | pytest, schema validators | P0 | Each owner; WS4 coordinates CI |
 | Storage | CSV/JSON and local model artifacts | P0 | File-based; no initial database |
 
@@ -115,7 +115,7 @@ Do not commit generated model binaries, API credentials, large simulation sample
 | 11 | External benchmark adapter and normalization | P1 | WS3 | Baseline + compatible dataset | Yes, synthetic peer fixture |
 | 12 | Conservative/balanced/aggressive comparison | P1 | WS4 | P1 risk + shared selection policy | Yes, risk fixtures |
 | 13 | Structured-result explanation | P2 | WS4 | Verified result bundle | Yes, template fallback |
-| 14 | Allowlisted tool chatbot | P2 | WS4 | Stable providers | Tool validation first |
+| 14 | Allowlisted tool chatbot (floating assistant, remote Ollama adapter, labelled mock) | P2 | WS4 | Stable providers | Yes: tool validation and mock-model flow first; see [chatbot plan](../docs/CHATBOT_IMPLEMENTATION.md) |
 
 Baseline target horizons are 12/36/60 months in the contract. P0 providers implement only 12 months and raise `UnsupportedHorizon` for 36/60. UI hides longer horizons until the forecast provider advertises support; no silent extension.
 
@@ -137,6 +137,10 @@ If C4 is late, freeze feature scope at P0. WS3 still contributes deterministic m
 
 Read [the integration guide](docs/INTEGRATION_GUIDE.md) for each gate's evidence, merge order, and mock removal policy.
 
+### P2 chatbot plan and remote inference decision
+
+The chatbot is a floating assistant inside the existing Streamlit dashboard. The language model does **not** run on developer machines or in this repository: a separate Ollama inference server runs the instruction-tuned `llama3.1:8b` tag, and the application holds a configurable client (`CHATBOT_PROVIDER`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`). Flow: user message plus application-bound dashboard context, then model interpretation, then application validation of proposed tool arguments, then execution by the existing services, then a result card and a concise grounded explanation. The model interprets language and explains results; it never calculates. Development and CI use an explicitly labelled mock model, and no step requires a live server. Implementation order: provider adapters, context binding, tools and limits, floating UI, live verification against a real endpoint (not yet done). Details: [docs/CHATBOT_IMPLEMENTATION.md](../docs/CHATBOT_IMPLEMENTATION.md).
+
 ## 7. Shared handoff artifacts
 
 Every handoff includes contract version, fixture revision, seed, config/assumption IDs, exact command from repository root, a sample serialized result, test evidence, and known limitations. Producers hand off validated public objects, never notebook-specific variables or personal file paths.
@@ -157,7 +161,7 @@ A module is done when its public contract validates; deterministic tests pass; i
 
 P0 is done when one fully real run goes from generated history through evaluated forecast, simulator, feasible optimization, frontier and dashboard; a manual slider result matches a direct simulator result; budget and target constraints are respected; no-op is exact; infeasible cases are visible; mock provenance is absent from accepted P0 domain outputs; all standard tests run offline; and performance is measured on the team's declared demo configuration.
 
-P1 is done feature-by-feature in source order. Report probabilities only from actual risk results; show benchmark coverage and SHAP interpretation limits. P2 is done only if explanations preserve numerical results, tool arguments validate, and provider failure falls back cleanly.
+P1 is done feature-by-feature in source order. Report probabilities only from actual risk results; show benchmark coverage and SHAP interpretation limits. P2 is done only if explanations preserve numerical results, tool arguments validate, and provider failure is reported visibly and recovers cleanly (a remote failure is never silently replaced by mock output; a deterministic template explanation is allowed only where labelled).
 
 Performance starting budgets: a deterministic simulation under 20 ms, 2,000 optimizer evaluations under 20 seconds, and 1,000 trials for one selected strategy under 5 seconds. These are team tuning targets on a documented shared demo profile, not guarantees across machines. Measure before raising sample counts or extending horizons.
 

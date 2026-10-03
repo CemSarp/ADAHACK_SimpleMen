@@ -20,10 +20,15 @@ Contract version is `1.0.0`. Names, types, units, action meanings, result status
 | D12 | P0 supports 12 months; 36/60 explicitly unsupported until tested | Avoid implying long-horizon credibility | WS1 + WS4 |
 | D13 | Compact fixtures are illustrative synthetic examples | They validate integration shape, not scientific truth | All four |
 | D14 | Shared schemas and documentation are authoritative | Consumers cannot privately rename fields | All four |
+| D15 | Chat model runs on a separate remote Ollama server, never on developer machines or in this repo | Avoids local weights/infrastructure; the app ships only a configurable client | WS4 + deployment owner |
+| D16 | Model tag is configurable (`OLLAMA_MODEL`), default `llama3.1:8b` (instruction-tuned tag) | Model can change without code changes | WS4 |
+| D17 | Mock chat mode is explicit (`CHATBOT_PROVIDER=mock`), labelled, and never a fallback for a failed remote call | Prevents mock output being mistaken for model output | WS4 |
+| D18 | Chat UI is a floating bottom-left bubble opening a panel inside the Streamlit dashboard | Keeps the assistant available without leaving the dashboard | WS4 |
+| D19 | LLM interprets and explains; allowlisted tools through existing services compute; chat what-if is a preview applied by an explicit button | Preserves single-simulator and ownership boundaries | WS2 + WS4 |
 
 ## Decisions to resolve during implementation
 
-These do not block C0 contracts: compatible package pins, precise LightGBM hyperparameters, real benchmark provider and dataset licence, source emission factors, calibrated action capex/effect coefficients, final sample budgets, and optional LLM provider.
+These do not block C0 contracts: compatible package pins, precise LightGBM hyperparameters, real benchmark provider and dataset licence, source emission factors, calibrated action capex/effect coefficients, final sample budgets, and the deployed Ollama endpoint, gateway authentication and hardware sizing (the provider decision itself is D15-D19).
 
 For each, record the selected value, evidence, reviewer, configuration ID, and affected fixture revision in the relevant configuration or provenance artifact. Illustrative default values are sufficient for synthetic demonstrations when labelled. Never claim they are calibrated company economics.
 

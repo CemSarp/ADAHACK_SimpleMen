@@ -503,3 +503,31 @@ class AnalysisBundle:
     warnings: tuple[str, ...]
     request: AnalysisRequest | None = None
     providers: Mapping[str, ProviderInfo] = field(default_factory=dict)
+
+
+# --------------------------------------------------------------------------- #
+# Chatbot objects (additive, contract 1.x; docs/CHATBOT_IMPLEMENTATION.md)
+# --------------------------------------------------------------------------- #
+
+TOOL_STATUSES: tuple[str, ...] = ("ok", "error", "unavailable")
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    """Outcome of an allowlisted tool call. `data` is a plain JSON-safe mapping
+    built from serialized public results; nothing here is model-generated."""
+
+    status: str
+    tool_name: str
+    validated_arguments: Mapping[str, Any]
+    data: Mapping[str, Any] | None
+    error: str | None
+
+
+@dataclass(frozen=True)
+class NarrativeResult:
+    status: str
+    text: str
+    source_run_id: str
+    provider: str
+    is_template: bool

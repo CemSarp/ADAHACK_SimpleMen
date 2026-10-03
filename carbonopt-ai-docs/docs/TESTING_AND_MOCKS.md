@@ -53,6 +53,10 @@ Use a two-variable toy problem with known dominated/feasible points for solver/c
 
 All stubs and real providers implement the same public protocols and serializers. Services may replace forecast, simulator, optimizer, risk, SHAP and benchmark independently. Run contract tests parametrized over the corresponding mock and real provider.
 
+### Chatbot mocks and tests
+
+`MockChatProvider` (`src/llm/providers.py`) is a deterministic, rule-based model double labelled **MOCK MODEL**; it is not a language model and exists only so the UI, tool loop and tests run offline. The Ollama adapter is tested with an injected fake transport (request shape, normalization, timeouts, HTTP errors, invalid bodies); no test needs a live endpoint. Required tests: provider normalization, configuration validation, no network at import or in mock mode, tool allowlist and argument validation, adoption-share conversion and percent ambiguity, server-bound context and versioning, execution limits and duplicate/retry dispatch, capability and provenance propagation, conversation persistence and stale cards, card accuracy against direct service calls, remote failure without mock fallback, P0 startup without chatbot configuration, and AppTest coverage of the floating panel. A live smoke test (`tests/integration/test_ollama_live.py`) is opt-in via `RUN_OLLAMA_LIVE_SMOKE=1` with `OLLAMA_BASE_URL` and is skipped otherwise.
+
 ## 3. Test structure and minimum suite
 
 | Layer | Paths | Required assertions |
