@@ -1,8 +1,8 @@
-"""Model trainer dashboard: pick models, train, stream ml_core logs, show the report."""
+"""Model comparison dashboard with progress and a summary report."""
 
 from __future__ import annotations
 
-import html
+import logging
 import importlib.util
 import json
 import os
@@ -17,7 +17,9 @@ from pathlib import Path
 import plotly.graph_objects as go
 import streamlit as st
 
-from .eda import ACCENT, BG, GREEN, GRID, INK, MUTED, PANEL, PIXEL_BODY, PIXEL_HEAD
+from .theme import ACCENT, BG, GREEN, GRID, INK, MUTED, PANEL, BODY_FONT, HEAD_FONT
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT / "data" / "synthetic_data.csv"
@@ -32,50 +34,33 @@ _TIMING = re.compile(r"^(backtest|test)\s+(\w+)\s+(\w+)\s+\d+ origins in ([\d.]+
 
 _CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 .st-key-train_panel {{
-  background: {BG}; border: 2px solid {GREEN}; max-width: 760px;
-  padding: .8rem 1rem .6rem 1rem; border-radius: 0; margin: .25rem 0 1rem 0;
+  background: {BG}; border: 1px solid {GRID}; width: 100%;
+  padding: 1.2rem; border-radius: 8px; margin: .25rem 0 1rem 0;
 }}
 .st-key-train_panel [data-testid="stBaseButton-pills"],
 .st-key-train_panel [data-testid="stBaseButton-pillsActive"] {{
-  border-radius: 0; font-family: {PIXEL_BODY}; font-size: 18px; padding: 0 .7rem; min-height: 30px;
+  border-radius: 0; font-family: {BODY_FONT}; font-size: 18px; padding: 0 .7rem; min-height: 30px;
   background: {PANEL}; border: 1px solid {GRID}; color: {MUTED};
 }}
 .st-key-train_panel [data-testid="stBaseButton-pillsActive"] {{ border-color: {GREEN}; color: {GREEN}; background: #0d2a1a; }}
 .st-key-train_panel [data-testid="stBaseButton-primary"],
 .st-key-train_panel [data-testid="stBaseButton-secondary"] {{
-  border-radius: 0; font-family: {PIXEL_HEAD}; font-size: 9px; letter-spacing: 1px; min-height: 34px;
+  border-radius: 0; font-family: {HEAD_FONT}; font-size: 14px; letter-spacing: 1px; min-height: 34px;
   background: {GREEN}; color: {BG}; border: 1px solid {GREEN};
 }}
 .st-key-train_panel [data-testid="stBaseButton-secondary"] {{ background: transparent; color: {RED}; border-color: {RED}; }}
 .st-key-train_panel [data-testid="stBaseButton-primary"]:disabled {{ background: {GRID}; border-color: {GRID}; color: {MUTED}; }}
-.tr-title {{ font-family: {PIXEL_HEAD}; color: {GREEN}; font-size: 11px; letter-spacing: 1px; margin: 0 0 .6rem 0; }}
-.tr-label {{ font-family: {PIXEL_HEAD}; color: {ACCENT}; font-size: 8px; margin: 0 0 .3rem 0; }}
-.tr-monitor {{ background: #151b22; border: 2px solid #2b3642; padding: 8px 10px 10px 10px; margin: .6rem 0 .4rem 0; }}
-.tr-bar {{ display: flex; justify-content: space-between; font-family: {PIXEL_HEAD}; font-size: 7px; color: {MUTED}; margin-bottom: 6px; }}
-.tr-led {{ color: {MUTED}; }} .tr-led.run {{ color: {ACCENT}; }} .tr-led.ok {{ color: {GREEN}; }} .tr-led.bad {{ color: {RED}; }}
-.tr-screen {{
-  background: #04070a; border: 2px solid #0d4d2a; height: 230px; overflow-y: auto; padding: 8px 10px;
-  display: flex; flex-direction: column-reverse;
-  box-shadow: inset 0 0 40px rgba(57,255,136,.08);
-  background-image: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 1px, transparent 1px 3px);
-}}
-.tr-lines {{ font-family: {PIXEL_BODY}; font-size: 17px; line-height: 1.05; color: {GREEN};
-  text-shadow: 0 0 4px rgba(57,255,136,.5); white-space: pre-wrap; word-break: break-word; }}
-.tr-lines .h {{ color: {ACCENT}; text-shadow: none; }} .tr-lines .b {{ color: #fff; }} .tr-lines .e {{ color: {RED}; text-shadow: none; }}
-.tr-cur {{ animation: tr-blink 1s steps(1) infinite; }} @keyframes tr-blink {{ 50% {{ opacity: 0; }} }}
-.tr-progress {{ border: 1px solid {GRID}; height: 10px; margin-top: 8px; }}
-.tr-progress > div {{ height: 100%; background: repeating-linear-gradient(90deg, {GREEN} 0 8px, transparent 8px 10px); }}
+.tr-label {{ font-family: {HEAD_FONT}; color: {ACCENT}; font-size: 13px; margin: 0 0 .5rem 0; }}
 .tr-best {{ display: flex; flex-wrap: wrap; gap: 8px; margin: .2rem 0 .6rem 0; }}
 .tr-card {{ flex: 1 1 120px; background: {PANEL}; border: 1px solid {GRID}; padding: .35rem .5rem; }}
 .tr-card.star {{ border-color: {GREEN}; }}
-.tr-card .k {{ font-family: {PIXEL_HEAD}; color: {MUTED}; font-size: 7px; margin-bottom: .25rem; }}
-.tr-card .v {{ font-family: {PIXEL_BODY}; color: {INK}; font-size: 22px; line-height: 1; }}
+.tr-card .k {{ font-family: {HEAD_FONT}; color: {MUTED}; font-size: 13px; margin-bottom: .25rem; }}
+.tr-card .v {{ font-family: {BODY_FONT}; color: {INK}; font-size: 22px; line-height: 1.3; }}
 .tr-card.star .v {{ color: {GREEN}; }}
-.tr-h {{ font-family: {PIXEL_HEAD}; color: {GREEN}; font-size: 9px; margin: 1rem 0 .5rem 0; }}
-table.tr-table {{ width: 100%; border-collapse: collapse; font-family: {PIXEL_BODY}; font-size: 18px; color: {INK}; }}
-table.tr-table th {{ font-family: {PIXEL_HEAD}; font-size: 7px; color: {MUTED}; text-align: right; padding: 4px 6px; border-bottom: 1px solid {GRID}; }}
+.tr-h {{ font-family: {HEAD_FONT}; color: {GREEN}; font-size: 14px; margin: 1rem 0 .5rem 0; }}
+table.tr-table {{ width: 100%; border-collapse: collapse; font-family: {BODY_FONT}; font-size: 18px; color: {INK}; }}
+table.tr-table th {{ font-family: {HEAD_FONT}; font-size: 13px; color: {MUTED}; text-align: right; padding: 4px 6px; border-bottom: 1px solid {GRID}; }}
 table.tr-table td {{ text-align: right; padding: 3px 6px; border-bottom: 1px solid {GRID}; }}
 table.tr-table th:first-child, table.tr-table td:first-child {{ text-align: left; }}
 table.tr-table tr.best td {{ color: {GREEN}; background: #0d2a1a; }}
@@ -140,30 +125,6 @@ def _available_models() -> list[str]:
     return [name for name, module in _MODELS if module is None or importlib.util.find_spec(module)]
 
 
-def _screen_html(job: TrainingJob | None) -> str:
-    if job is None:
-        led, status, body = "", "IDLE", '> READY. SELECT MODELS AND PRESS TRAIN<span class="tr-cur">_</span>'
-        elapsed = ""
-    else:
-        led = "run" if job.running else "ok" if job.returncode == 0 else "bad"
-        status = "TRAINING" if job.running else "DONE" if job.returncode == 0 else "FAILED"
-        elapsed = f" {job.elapsed:.0f}s"
-        rendered = []
-        for line in job.lines[-300:]:
-            text = html.escape(line)
-            css = ("h" if line.startswith(("===", "###")) else "b" if line.startswith("Best model")
-                   else "e" if "Traceback" in line or "Error" in line else "")
-            rendered.append(f'<span class="{css}">{text}</span>' if css else text)
-        body = "\n".join(rendered) or "> STARTING"
-        if job.running:
-            body += '<span class="tr-cur">_</span>'
-    progress = 0.0 if job is None else job.progress
-    return (f'<div class="tr-monitor"><div class="tr-bar"><span>MODEL-TRAINER</span>'
-            f'<span class="tr-led {led}">&#9679; {status}{elapsed}</span></div>'
-            f'<div class="tr-screen"><div class="tr-lines">{body}</div></div>'
-            f'<div class="tr-progress"><div style="width:{progress * 100:.0f}%"></div></div></div>')
-
-
 def _num(value: float | None, digits: int = 0, suffix: str = "") -> str:
     return "-" if value is None else f"{value:,.{digits}f}{suffix}"
 
@@ -173,7 +134,7 @@ def _card(key: str, value: str, star: bool = False) -> str:
 
 
 def _bar_chart(models: list[str], backtest: list[float], test: list[float], metric: str) -> go.Figure:
-    font = dict(family=PIXEL_BODY, color=INK, size=15)
+    font = dict(family=BODY_FONT, color=INK, size=15)
     fig = go.Figure()
     fig.add_bar(y=models, x=backtest, orientation="h", name="BACKTEST", marker_color=ACCENT)
     fig.add_bar(y=models, x=test, orientation="h", name="TEST", marker_color=GREEN)
@@ -226,7 +187,7 @@ def _report(job: TrainingJob) -> None:
             for v in forecast.values())
         st.html(f'<div class="tr-label">FORECAST BY {best.upper()}</div><div class="tr-best">{tiles}</div>')
     if not shown:
-        st.html(f'<div class="tr-lines e">NO RESULTS WERE PRODUCED. CHECK THE LOG ABOVE.</div>')
+        st.info("No comparison results were produced. Please try again.")
 
 
 def _panel(poll: bool) -> None:
@@ -235,18 +196,30 @@ def _panel(poll: bool) -> None:
         st.rerun()
 
     with st.container(key="train_panel"):
-        st.html('<div class="tr-title">&gt; MODEL TRAINER</div><div class="tr-label">MODELS</div>')
+        st.subheader("Model Selection")
+        st.caption("Compare forecasting methods on held-out historical data. This comparison does not change the forecast used for planning.")
         options = _available_models()
         selected = st.pills("Models", options, selection_mode="multi", default=options, key="trainer_models",
                             label_visibility="collapsed") or []
         running = job is not None and job.running
-        col_train, col_abort, _ = st.columns([1, 1, 3])
-        if col_train.button("TRAIN", type="primary", disabled=running or not selected, key="trainer_start"):
+        col_train, col_abort = st.columns(2)
+        if col_train.button("Compare models", type="primary", disabled=running or not selected, key="trainer_start", width="stretch"):
             st.session_state[JOB_KEY] = TrainingJob(list(selected))
             st.rerun()
-        if running and col_abort.button("ABORT", key="trainer_abort"):
+        if running and col_abort.button("Stop comparison", key="trainer_abort", width="stretch"):
             job.abort()
-        st.html(_screen_html(job))
+        if job is None:
+            st.caption("Choose the forecasting methods to compare, then select Compare models.")
+        elif job.running:
+            st.progress(job.progress, text="Comparing forecasts with historical outcomes…")
+            st.caption(f"Elapsed time: {job.elapsed:.0f} seconds")
+        elif job.returncode == 0:
+            st.success(f"Comparison complete in {job.elapsed:.0f} seconds.")
+        elif job.returncode is not None and job.returncode < 0:
+            st.info("Comparison stopped. Choose models to start again.")
+        else:
+            logger.error("Model comparison failed: %s", "\n".join(job.lines[-100:]))
+            st.error("The model comparison could not be completed. Please try again.")
         if job is not None and not job.running and job.returncode == 0:
             _report(job)
 

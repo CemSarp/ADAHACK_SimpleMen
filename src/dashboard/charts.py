@@ -18,6 +18,8 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+from .theme import ACCENT, BG, BODY_FONT, GREEN, GRID, INK, MUTED
+
 from src.contracts.types import (
     BacktestReport,
     BaselineBundle,
@@ -52,8 +54,8 @@ LIGHT = Theme(
     baseline="#898781", selected="#2a78d6", whatif="#eb6834", actual="#0b0b0b", positive="#2a78d6", negative="#e34948",
 )
 DARK = Theme(
-    surface="#1a1a19", text="#ffffff", text_secondary="#c3c2b7", muted="#898781", grid="#2c2c2a", axis="#383835",
-    baseline="#898781", selected="#3987e5", whatif="#d95926", actual="#ffffff", positive="#3987e5", negative="#e66767",
+    surface=BG, text=INK, text_secondary=MUTED, muted=MUTED, grid=GRID, axis=GRID,
+    baseline=MUTED, selected=ACCENT, whatif="#f0a85b", actual=GREEN, positive=GREEN, negative="#ff7387",
 )
 
 
@@ -67,7 +69,7 @@ def _layout(fig: go.Figure, t: Theme, *, height: int, x_title: str | None = None
         margin=dict(l=8, r=8, t=36, b=8),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family='system-ui, -apple-system, "Segoe UI", sans-serif', color=t.text_secondary, size=12),
+        font=dict(family=BODY_FONT, color=t.text_secondary, size=14),
         legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, font=dict(color=t.text_secondary)),
         hoverlabel=dict(font=dict(family='system-ui, -apple-system, "Segoe UI", sans-serif')),
         hovermode="x unified",
@@ -92,7 +94,7 @@ def history_and_baseline(history: pd.DataFrame | None, baseline: BaselineBundle,
     fig = go.Figure()
     if history is not None and len(history):
         fig.add_trace(go.Scatter(
-            x=history["timestamp"], y=history[target], name="History (synthetic)", mode="lines",
+            x=history["timestamp"], y=history[target], name="History", mode="lines",
             line=dict(color=t.actual, width=2),
         ))
     fig.add_trace(go.Scatter(
@@ -156,7 +158,7 @@ def pareto_scatter(
     cand = optimization.candidates
     pareto = optimization.pareto.sort_values("total_co2e_tco2e")
     hover = (
-        "<b>%{customdata[0]}</b><br>Emissions %{x:,.1f} tCO₂e<br>Profit £%{y:,.0f}"
+        "Emissions %{x:,.1f} tCO₂e<br>Profit £%{y:,.0f}"
         "<br>Gross outlay £%{customdata[1]:,.0f}<extra></extra>"
     )
 

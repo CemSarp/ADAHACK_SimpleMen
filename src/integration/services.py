@@ -1,4 +1,7 @@
-"""Provider registry: create_services(mode, provider_overrides).
+"""Company service registry, defaulting to the integrated domain implementations.
+
+Explicit mock/hybrid wiring below is retained for regression tests and dependency
+injection. There are no product presets or environment-selected modes.
 
 Modes (docs/INTEGRATION_GUIDE.md section 2):
   mock    every slot bound to a development/test double from tests/mocks.
@@ -56,23 +59,6 @@ MOCK_VARIANT_NAMES: tuple[str, ...] = ("mock", "fixture", "behavioral")
 
 Mode = Literal["mock", "real", "hybrid"]
 
-#: Named hybrid configurations. "fixture-forecast-real-ws2" is the documented integration
-#: setup while WS1 is unavailable: labelled fixture baseline, real WS2 simulator, constraints,
-#: optimizer and recommendation. Risk/benchmark ask for real providers, so they stay
-#: disabled (with the reason) until WS3 publishes them and then bind without code changes.
-#: SHAP is disabled because a fixture baseline has no trained model to explain.
-HYBRID_PRESETS: Mapping[str, Mapping[str, str]] = {
-    "fixture-forecast-real-ws2": {
-        "forecast": "fixture",
-        "simulator": "real",
-        "optimizer": "real",
-        "risk": "real",
-        "shap": "disabled",
-        "benchmark": "real",
-    },
-}
-DEFAULT_HYBRID_PRESET = "fixture-forecast-real-ws2"
-
 #: Human-readable owner/kind labels for the provenance line ("Baseline: fixture · Simulator: WS2 ...").
 SLOT_LABELS: Mapping[str, str] = {
     "forecast": "Baseline",
@@ -85,14 +71,6 @@ SLOT_LABELS: Mapping[str, str] = {
 REAL_OWNERS: Mapping[str, str] = {
     "forecast": "WS1", "simulator": "WS2", "optimizer": "WS2", "risk": "WS3", "shap": "WS1", "benchmark": "WS3",
 }
-
-
-def preset_overrides(name: str) -> dict[str, str]:
-    """Provider overrides for a named hybrid preset."""
-    try:
-        return dict(HYBRID_PRESETS[name])
-    except KeyError:
-        raise ProviderConfigurationError(f"unknown hybrid preset {name!r}; known: {sorted(HYBRID_PRESETS)}") from None
 
 
 @dataclass(frozen=True, eq=False)
@@ -160,7 +138,12 @@ def _check_instance(slot: str, provider: object, mode: str) -> object:
     return provider
 
 
-def create_services(*, mode: Mode, provider_overrides: Mapping[str, object] | None = None) -> Services:
+def create_services(*, mode: Mode = "real", provider_overrides: Mapping[str, object] | None = None) -> Services:
+    """Bind the company's domain services by default.
+
+    Explicit modes and overrides remain a regression-test injection seam; the
+    application does not expose or read a mode setting.
+    """
     if mode not in ("mock", "real", "hybrid"):
         raise ProviderConfigurationError(f"unknown provider mode {mode!r}; use mock, real or hybrid")
     overrides = dict(provider_overrides or {})

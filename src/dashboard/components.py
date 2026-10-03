@@ -3,6 +3,7 @@ public contract objects; all writes go through DashboardState."""
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import pandas as pd
@@ -35,6 +36,8 @@ from .state import (
     slider_key,
 )
 
+logger = logging.getLogger(__name__)
+
 # --------------------------------------------------------------------------- #
 # Provenance
 # --------------------------------------------------------------------------- #
@@ -53,11 +56,11 @@ def constraint_failures(check: Any) -> list[str]:
 
 
 def error_box(kind: str, error_type: str, message: str) -> None:
+    logger.error("Dashboard %s (%s): %s", kind, error_type, message)
     if kind == VALIDATION_ERROR:
-        st.error(f"**Input not valid** ({error_type}): {message}", icon="🚫")
+        st.error("These inputs could not be used. Review your planning goals and try again.", icon="🚫")
     else:
-        st.error(f"**Provider error** ({error_type}): {message}. Nothing was replaced with mock output; adjust "
-                 "the inputs or provider configuration and retry.", icon="🛑")
+        st.error("This analysis could not be completed. Try again or contact the application administrator.", icon="🛑")
 
 
 def kpi_row(items: list[dict[str, Any]]) -> None:
@@ -81,7 +84,8 @@ def kpi_row(items: list[dict[str, Any]]) -> None:
 
 
 def company_context(state: DashboardState, dark: bool) -> None:
-    st.subheader("Exploratory Data Analysis and Model Selection")
+    if state.baseline is not None and state.baseline.data_kind == "synthetic":
+        st.caption("Synthetic data · results use illustrative company data and action assumptions.")
     eda.feature_explorer()
     trainer.model_trainer()
     baseline = state.baseline
@@ -91,11 +95,10 @@ def company_context(state: DashboardState, dark: bool) -> None:
             error_box(e.kind, e.error_type, e.message)
         return
     history = state.history
-    st.markdown("#### Baseline forecast")
+    st.subheader("Baseline forecast")
     st.caption(
-        f"Company `{baseline.company_id}` · data kind **{baseline.data_kind}** · scope 2 method "
-        f"`{baseline.scope2_method}` · model `{baseline.model_id}` · driver policy `{baseline.driver_policy_id}` · "
-        f"provider `{baseline.provenance.provider}`"
+        "Expected emissions and operating profit if operations continue without new actions. "
+        "Financial planning values are shown in pounds; source data in the explorer uses its original currency."
     )
     tiles: list[dict[str, Any]] = []
     if history is not None and len(history):
@@ -117,8 +120,7 @@ def company_context(state: DashboardState, dark: bool) -> None:
     kpi_row(tiles)
     st.caption(
         f"History: {period_label(history['timestamp']) if history is not None and len(history) else 'not provided'} · "
-        f"Forecast horizon: {period_label(baseline.monthly['timestamp'])}. Both 12-month totals above are labelled "
-        "periods; the history window is observed and the forecast window is projected."
+        f"Forecast: {period_label(baseline.monthly['timestamp'])}. Historical totals and forecast totals cover different periods."
     )
     tab_e, tab_p = st.tabs(["Emissions", "Operating profit"])
     with tab_e:
@@ -129,9 +131,10 @@ def company_context(state: DashboardState, dark: bool) -> None:
 
 def backtest_panel(state: DashboardState, dark: bool) -> None:
     report = state.backtest
-    st.subheader("Forecast evaluation (temporal backtest)")
+    st.subheader("Forecast accuracy")
+    st.caption("Compare predictions with held-out history to judge how reliable the forecast is.")
     if report is None:
-        st.info("The forecast provider did not publish a backtest report.", icon="ℹ️")
+        st.info("Historical forecast evaluation is currently unavailable.", icon="ℹ️")
         return
     rows = []
     for target, m in report.aggregate_metrics.items():
@@ -152,9 +155,12 @@ def backtest_panel(state: DashboardState, dark: bool) -> None:
     n_folds = report.folds["fold_id"].nunique()
     horizons = (f" and horizons 1–{int(report.oof_predictions['horizon'].max())}"
                 if "horizon" in report.oof_predictions.columns and len(report.oof_predictions) else "")
-    st.caption(f"Pooled out-of-fold metrics over {n_folds} expanding-window forecast origins{horizons}; units follow "
-               f"each target (tCO₂e or GBP per month). Model family `{report.model_family}`, feature spec "
-               f"`{report.feature_spec_id}`." + (" The chart shows the 1-month-ahead path." if horizons else ""))
+    st.caption(f"Evaluation covers {n_folds} historical forecast dates{horizons}. "
+               "MAE is the average absolute error; RMSE gives more weight to large errors. "
+               "Lower errors are better; R² closer to 1 indicates a better fit. "
+               "The seasonal reference repeats the same month from the previous year. "
+               "Error units are tonnes of CO₂e or pounds per month."
+               + (" The chart shows predictions one month ahead." if horizons else ""))
     targets = [t for t in report.aggregate_metrics]
     tabs = st.tabs([charts.TARGET_LABELS.get(t, t) for t in targets])
     for tab, target in zip(tabs, targets):
@@ -199,12 +205,37 @@ def _consume_selection_events(state: DashboardState) -> None:
 def _strategy_label(sid: str, analysis: Any) -> str:
     row = analysis.optimization.pareto.set_index("strategy_id").loc[sid]
     star = "★ " if sid == analysis.recommendation.strategy_id else ""
-    return f"{star}{sid} · {tonnes(row['total_co2e_tco2e'])} · {gbp(row['total_profit_gbp'])}"
+    return f"{star}{_strategy_name(sid, analysis)} · {tonnes(row['total_co2e_tco2e'])} · {gbp(row['total_profit_gbp'])}"
+
+
+def _strategy_name(sid: str | None, analysis: Any) -> str:
+    ids = analysis.optimization.pareto.sort_values(["total_co2e_tco2e", "strategy_id"])["strategy_id"].tolist()
+    return f"Plan {ids.index(sid) + 1}" if sid in ids else "No plan"
+
+
+def recommendation_text(rec: Any) -> str:
+    """Describe the existing policy without displaying internal field names."""
+    if rec.risk_status == "not_requested":
+        return "Recommendation balances emissions reductions and operating profit across feasible plans."
+    if rec.risk_status == "unavailable":
+        return "Uncertainty results are unavailable; the recommendation balances forecast emissions and profit."
+    descriptions = {
+        "conservative": "Balances high-emissions and low-profit trial outcomes, preferring plans with at least a 90% chance of meeting all goals.",
+        "balanced": "Balances average trial emissions and profit, preferring plans with at least a 75% chance of meeting all goals.",
+        "aggressive": "Prioritises average trial emissions reductions, with a smaller weight on profit.",
+    }
+    text = f"{rec.tolerance.capitalize()} approach: {descriptions[rec.tolerance]}"
+    if rec.risk_status == "threshold_unmet":
+        text += " No evaluated plan met that probability threshold; the selected plan has the highest chance of meeting all goals."
+    elif rec.risk_status == "partial":
+        text += " Uncertainty results cover only part of the assessed plan set."
+    return text
 
 
 def optimization_panel(state: DashboardState, services: Services, request: AnalysisRequest, dark: bool) -> None:
     analysis = state.analysis
     st.subheader("Optimized strategies")
+    st.caption("Compare action mixes that meet your goals. The frontier shows the best available trade-offs between emissions and profit.")
     status = state.status
     if status in (VALIDATION_ERROR, PROVIDER_ERROR) and state.error:
         error_box(state.error.kind, state.error.error_type, state.error.message)
@@ -221,15 +252,14 @@ def optimization_panel(state: DashboardState, services: Services, request: Analy
 
     opt = analysis.optimization
     diag = opt.diagnostics
-    st.caption(
-        f"Evaluated {diag.get('evaluated_count', '?')} candidates ({diag.get('unique_count', '?')} unique) · seed "
-        f"{diag.get('seed', '?')} · termination `{diag.get('termination_reason', '?')}` · provider "
-        f"`{opt.provenance.provider}`"
-    )
-    if diag.get("warning"):
-        st.caption(f"Provider note: {diag['warning']}")
+    kpi_row([
+        {"label": "Feasible plans", "value": f"{diag.get('feasible_count', 0):,}"},
+        {"label": "Frontier plans", "value": f"{len(opt.pareto):,}"},
+    ])
     for warning in analysis.warnings:
-        st.caption(f"⚠️ {warning}")
+        logger.warning("Analysis note: %s", warning)
+    if analysis.warnings:
+        st.warning("Some supporting results could not be produced. Available results are shown below.")
 
     if status == INFEASIBLE:
         st.error(
@@ -237,10 +267,6 @@ def optimization_panel(state: DashboardState, services: Services, request: Analy
             "search budget (this is not a proof that none exists). Relax the budget, profit floor or CO₂ target "
             "and optimize again.", icon="🚫",
         )
-        mv = diag.get("minimum_normalized_violations", {})
-        if mv:
-            st.caption("Smallest normalized violation among evaluated candidates — "
-                       + ", ".join(f"{k}: {v:.3g}" for k, v in mv.items()))
     _consume_selection_events(state)
 
     pareto_fig = charts.pareto_scatter(
@@ -252,32 +278,31 @@ def optimization_panel(state: DashboardState, services: Services, request: Analy
                     selection_mode="points", config={"displaylogo": False})
     if status != READY:
         return
-    st.caption("Click a frontier point, a table row, or use the selector to choose a strategy. Feasibility and "
-               "Pareto ranks come from the optimizer provider; the chart only plots them.")
+    st.caption("Click a frontier point or use the selector to choose a plan. Open Compare plan details for the full table. ★ marks the recommendation.")
 
     table = opt.pareto.sort_values(["total_co2e_tco2e", "strategy_id"]).reset_index(drop=True)
     st.session_state["co_table_ids"] = table["strategy_id"].tolist()
     display = pd.DataFrame({
         "": ["★" if sid == analysis.recommendation.strategy_id else "" for sid in table["strategy_id"]],
-        "Strategy ID": table["strategy_id"],
+        "Plan": [_strategy_name(sid, analysis) for sid in table["strategy_id"]],
         "Emissions (tCO₂e)": table["total_co2e_tco2e"],
         "CO₂ reduction (%)": table["co2_reduction_ratio"] * 100.0,
         "Cumulative profit (£)": table["total_profit_gbp"],
         "Gross outlay (£)": table["total_cost_gbp"],
-        **{ACTION_LABELS[n]: table[n] for n in ACTION_NAMES},
+        **{ACTION_LABELS[n]: table[n] * 100 for n in ACTION_NAMES},
     })
-    st.dataframe(
-        display, hide_index=True, width="stretch", key="co_widget_table", on_select="rerun", selection_mode="single-row",
-        column_config={
-            "Emissions (tCO₂e)": st.column_config.NumberColumn(format="%.1f"),
-            "CO₂ reduction (%)": st.column_config.NumberColumn(format="%.1f%%"),
-            "Cumulative profit (£)": st.column_config.NumberColumn(format="£%,.0f"),
-            "Gross outlay (£)": st.column_config.NumberColumn(format="£%,.0f"),
-            **{ACTION_LABELS[n]: st.column_config.NumberColumn(format="%.2f") for n in ACTION_NAMES},
-        },
-    )
-    st.caption("Action columns are fractions of remaining opportunity, rounded for display only; selection uses the "
-               "strategy ID and the exact stored configuration.")
+    with st.expander("Compare plan details"):
+        st.dataframe(
+            display, hide_index=True, width="stretch", key="co_widget_table", on_select="rerun", selection_mode="single-row",
+            column_config={
+                "Emissions (tCO₂e)": st.column_config.NumberColumn(format="%.1f"),
+                "CO₂ reduction (%)": st.column_config.NumberColumn(format="%.1f%%"),
+                "Cumulative profit (£)": st.column_config.NumberColumn(format="£%,.0f"),
+                "Gross outlay (£)": st.column_config.NumberColumn(format="£%,.0f"),
+                **{ACTION_LABELS[n]: st.column_config.NumberColumn(format="%.1f%%") for n in ACTION_NAMES},
+            },
+        )
+        st.caption("Action percentages show how much of the remaining opportunity each plan implements.")
 
     ids = table["strategy_id"].tolist()
     if state.selected_strategy_id in ids:
@@ -289,13 +314,12 @@ def optimization_panel(state: DashboardState, services: Services, request: Analy
     st.selectbox("Selected strategy", ids, key="co_widget_select", on_change=on_select,
                  format_func=lambda sid: _strategy_label(sid, analysis))
     rec = analysis.recommendation
-    st.caption(f"★ Recommended by policy `{rec.policy}` (tolerance {rec.tolerance}, risk status `{rec.risk_status}`). "
-               f"{rec.reason or ''}")
+    st.caption("★ " + recommendation_text(rec))
 
 
 def strategy_kpis(result: SimulationResult, *, title: str, services: Services, request: AnalysisRequest) -> None:
     m = result.metrics
-    st.markdown(f"**{title}**" + f" · `{result.strategy_id}`")
+    st.markdown(f"**{title}**")
     kpi_row([
         {"label": "Horizon emissions", "value": tonnes(m["total_co2e_tco2e"]),
          "delta": tonnes(-m["co2_reduction_tco2e"], signed=True), "delta_color": "inverse",
@@ -315,10 +339,12 @@ def selected_strategy_panel(state: DashboardState, services: Services, request: 
     selected = state.selected_strategy()
     if selected is None:
         return
-    strategy_kpis(selected, title="Selected strategy (stored optimizer result)", services=services, request=request)
+    st.subheader("Selected strategy")
+    st.caption("Review this plan's emissions, profit and implementation cost against the baseline.")
+    strategy_kpis(selected, title=_strategy_name(selected.strategy_id, state.analysis), services=services, request=request)
     cfg = selected.config
-    st.caption("Actions (fraction of remaining opportunity): " + " · ".join(
-        f"{ACTION_LABELS[n]} {getattr(cfg, n):.3f}" for n in ACTION_NAMES))
+    st.caption("Actions (% of remaining opportunity): " + " · ".join(
+        f"{ACTION_LABELS[n]} {pct(getattr(cfg, n))}" for n in ACTION_NAMES))
 
 
 # --------------------------------------------------------------------------- #
@@ -333,9 +359,8 @@ def whatif_panel(state: DashboardState, services: Services, request: AnalysisReq
         st.info("What-if needs a baseline forecast.", icon="ℹ️")
         return
     st.caption(
-        "Each slider is the **fraction of the remaining opportunity** implemented at month 1 and held for the horizon "
-        "(0 = no change). Moving a slider calls the simulator directly; it does not retrain or re-optimize. "
-        f"Simulator: `{services.providers['simulator'].name}`."
+        "Explore an action mix and compare its results with your goals. Each slider is the fraction of the remaining "
+        "opportunity implemented from the first month (0 = no change; 1 = full implementation)."
     )
     b1, b2 = st.columns(2)
     selected = state.selected_strategy()
@@ -368,14 +393,17 @@ def whatif_panel(state: DashboardState, services: Services, request: AnalysisReq
     check = state.whatif_constraint_check(services, request)
     if check is not None:
         if check.feasible:
-            st.success("Meets the current budget, profit floor and CO₂ target (shared constraint evaluation).", icon="✅")
+            st.success("Meets the current budget, profit floor and CO₂ target.", icon="✅")
         else:
             failed = constraint_failures(check)
             st.warning("Does not meet: " + ", ".join(failed or ["constraint tolerance"]) + ".", icon="⚠️")
     if selected is not None and result.strategy_id == selected.strategy_id:
         same = all(result.metrics[k] == selected.metrics[k] for k in selected.metrics)
-        st.caption("✔ Identical to the stored optimizer result for the selected strategy." if same else
-                   "✖ Differs from the stored optimizer result for the same strategy ID — report to WS2.")
+        if same:
+            st.caption("Matches the selected plan.")
+        else:
+            logger.error("What-if differs from stored strategy %s", selected.strategy_id)
+            st.warning("The preview could not reproduce the selected plan. Please rerun the analysis.")
 
 
 def monthly_panel(state: DashboardState, dark: bool) -> None:
@@ -400,63 +428,65 @@ def monthly_panel(state: DashboardState, dark: bool) -> None:
 
 
 def optional_panels(state: DashboardState, services: Services, request: AnalysisRequest, dark: bool) -> None:
-    st.subheader("Risk, forecast explanation, benchmark and scenarios")
+    st.subheader("Decision confidence")
+    st.caption("Assess uncertainty, compare with peers and explore how risk preferences affect the recommendation.")
     caps = services.capabilities
     analysis = state.analysis
-    tabs = st.tabs(["Risk", "Forecast SHAP", "Benchmark", "Scenario comparison"])
+    labels = ["Uncertainty", "Peer comparison", "Risk preferences"]
+    if caps.shap_available_targets:
+        labels.append("Forecast explanation")
+    tabs = dict(zip(labels, st.tabs(labels)))
 
-    with tabs[0]:
+    with tabs["Uncertainty"]:
         if not caps.risk_available:
-            st.info(f"Risk is unavailable: {services.unavailable.get('risk', 'no provider')}.", icon="⛔")
+            st.info("Uncertainty analysis is currently unavailable.", icon="ℹ️")
         elif not request.risk_enabled:
-            st.caption("Enable **Risk** in the sidebar and optimize to evaluate the frontier risk pool.")
+            st.caption("Enable **Assess uncertainty** in the sidebar and optimize to evaluate a representative set of frontier plans.")
         elif analysis is None:
             st.caption("Optimize to evaluate risk.")
         else:
             sid = state.selected_strategy_id
             risk = analysis.risk_results.get(sid) if sid else None
-            st.caption(f"Risk results available for {len(analysis.risk_results)} pool strategies. Risk is "
-                       "assumption-based action uncertainty conditional on the baseline forecast.")
+            st.caption(f"Uncertainty assessed for {len(analysis.risk_results)} frontier plans. "
+                       "Trials vary action assumptions while keeping the baseline forecast fixed.")
             if risk is None:
                 st.info("No risk result for the selected strategy.", icon="ℹ️")
             else:
                 s = risk.summary
-                st.markdown(f"**{risk.n_simulations:,} trials** · uncertainty `{risk.uncertainty_id}` · seed "
-                            f"{risk.provenance.seed}")
+                st.markdown(f"**{risk.n_simulations:,} uncertainty trials** for the selected plan")
                 kpi_row([
-                    {"label": "P(target met)", "value": pct(s["target_probability"]),
-                     "help": f"MC standard error {s['target_probability_mc_standard_error']:.4f}. "
+                    {"label": "Chance of meeting CO₂ target", "value": pct(s["target_probability"]),
+                     "help": f"Sampling standard error: {pct(s['target_probability_mc_standard_error'])}. "
                              "A finite-trial estimate, not a guarantee."},
-                    {"label": "P(profit floor met)", "value": pct(s["profit_floor_probability"])},
-                    {"label": "P(within budget)", "value": pct(s["budget_probability"])},
-                    {"label": "P(all constraints)", "value": pct(s["joint_feasibility_probability"])},
+                    {"label": "Chance of meeting profit floor", "value": pct(s["profit_floor_probability"])},
+                    {"label": "Chance of staying within budget", "value": pct(s["budget_probability"])},
+                    {"label": "Chance of meeting all goals", "value": pct(s["joint_feasibility_probability"])},
                 ])
                 st.plotly_chart(charts.risk_intervals(risk, state.selected_strategy(), dark=dark), width="stretch")
                 st.caption("Intervals are empirical p05–p95 trial outcomes (90% of trials), not confidence intervals.")
 
-    with tabs[1]:
-        if not caps.shap_available_targets:
-            st.info(f"SHAP is unavailable: {services.unavailable.get('shap', 'no provider')}.", icon="⛔")
-        elif analysis is None or analysis.explanation is None:
-            st.caption("Enable **SHAP** in the sidebar and optimize to load forecast explanations.")
-        else:
-            exp = analysis.explanation
-            st.caption("Explains the forecast model's raw output (not causal action effects, nor why the optimizer "
-                       "chose a strategy).")
-            targets = sorted(set(exp.contributions["target"]))
-            for tab, target in zip(st.tabs([charts.TARGET_LABELS.get(t, t) for t in targets]), targets):
-                with tab:
-                    st.plotly_chart(charts.shap_contributions(exp, target, dark=dark), width="stretch")
+    if "Forecast explanation" in tabs:
+        with tabs["Forecast explanation"]:
+            if analysis is None or analysis.explanation is None:
+                st.caption("Enable **Explain the forecast** in the sidebar and optimize to view forecast drivers.")
+            else:
+                exp = analysis.explanation
+                st.caption("Shows which inputs influence the forecast. These contributions do not measure the effects of actions or explain plan selection.")
+                targets = sorted(set(exp.contributions["target"]))
+                for tab, target in zip(st.tabs([charts.TARGET_LABELS.get(t, t) for t in targets]), targets):
+                    with tab:
+                        st.plotly_chart(charts.shap_contributions(exp, target, dark=dark), width="stretch")
 
-    with tabs[2]:
+    with tabs["Peer comparison"]:
         if not caps.benchmark_available:
-            st.info(f"Benchmark is unavailable: {services.unavailable.get('benchmark', 'no provider')}.", icon="⛔")
+            st.info("Peer comparison is currently unavailable.", icon="ℹ️")
         elif analysis is None or analysis.benchmark is None:
-            st.caption("Enable **Benchmark** in the sidebar and optimize to compare against peers.")
+            st.caption("Enable **Compare with peers** in the sidebar and optimize to see the comparison.")
         else:
             b = analysis.benchmark
             if b.status != "ok":
-                st.info(f"Benchmark unavailable: {b.reason}", icon="ℹ️")
+                logger.info("Benchmark unavailable: %s", b.reason)
+                st.info("A comparable peer group could not be found for this company.", icon="ℹ️")
             else:
                 st.markdown(
                     f"Estimated intensity percentile: **{b.percentile:.0f}** (lower is better) — lower intensity than "
@@ -464,23 +494,24 @@ def optional_panels(state: DashboardState, services: Services, request: Analysis
                 )
                 st.plotly_chart(charts.benchmark_position(b, dark=dark), width="stretch")
                 st.caption(
-                    f"{b.peer_count} peers · source `{b.source_id}` ({'synthetic' if b.is_synthetic else 'reported'}) · "
-                    f"forecast period compared {b.period_start} – {b.period_end} · coverage `{b.scope_coverage}` · scope 2 "
-                    f"`{b.scope2_method}` · basis `{b.comparison_basis}` (forecast compared with historical peers)."
+                    f"{b.peer_count} peers · {'synthetic' if b.is_synthetic else 'reported'} peer data · "
+                    f"forecast period {b.period_start} – {b.period_end}. "
+                    f"Coverage: {b.scope_coverage.replace('_', ' ')}; scope 2: {b.scope2_method.replace('_', ' ')}. "
+                    "Company forecasts are compared with historical peer results."
                 )
 
-    with tabs[3]:
+    with tabs["Risk preferences"]:
         scenario_panel(state, services, request)
 
 
 def scenario_panel(state: DashboardState, services: Services, request: AnalysisRequest) -> None:
     """Conservative / balanced / aggressive selections from WS2's policy on one analysis."""
     if not services.capabilities.scenario_compare_available:
-        st.info(f"Scenario comparison is unavailable: {services.unavailable.get('scenario_compare', '')}.", icon="⛔")
+        st.info("Risk preference comparison is currently unavailable.", icon="ℹ️")
         return
     analysis = state.analysis
     if analysis is None or not request.risk_enabled:
-        st.caption("Enable **Risk** in the sidebar and optimize: all three policies rank the same evaluated risk pool.")
+        st.caption("Enable **Assess uncertainty** and optimize to compare conservative, balanced and aggressive approaches.")
         return
     result = state.scenarios(services)
     if isinstance(result, ErrorInfo):
@@ -491,7 +522,8 @@ def scenario_panel(state: DashboardState, services: Services, request: AnalysisR
     opt = analysis.optimization
     rows = []
     for tol, rec in result.items():
-        row: dict[str, Any] = {"Tolerance": tol, "Strategy ID": rec.strategy_id or "none", "Risk status": rec.risk_status}
+        row: dict[str, Any] = {"Approach": tol.capitalize(), "Plan": _strategy_name(rec.strategy_id, analysis),
+                               "Uncertainty assessment": rec.risk_status.replace('_', ' ').capitalize()}
         if rec.strategy_id is not None:
             sim = opt.strategies[rec.strategy_id]
             m = sim.metrics
@@ -499,9 +531,9 @@ def scenario_panel(state: DashboardState, services: Services, request: AnalysisR
             row.update({
                 "Emissions (tCO₂e)": m["total_co2e_tco2e"], "CO₂ reduction (%)": (m["co2_reduction_ratio"] or 0) * 100,
                 "Cumulative profit (£)": m["total_profit_gbp"], "Gross outlay (£)": m["total_cost_gbp"],
-                "P(target)": None if risk is None else risk.summary["target_probability"] * 100,
-                "P(all constraints)": None if risk is None else risk.summary["joint_feasibility_probability"] * 100,
-                **{ACTION_LABELS[n]: getattr(sim.config, n) for n in ACTION_NAMES},
+                "Chance of CO₂ target": None if risk is None else risk.summary["target_probability"] * 100,
+                "Chance of all goals": None if risk is None else risk.summary["joint_feasibility_probability"] * 100,
+                **{ACTION_LABELS[n]: getattr(sim.config, n) * 100 for n in ACTION_NAMES},
             })
         rows.append(row)
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={
@@ -509,23 +541,21 @@ def scenario_panel(state: DashboardState, services: Services, request: AnalysisR
         "CO₂ reduction (%)": st.column_config.NumberColumn(format="%.1f%%"),
         "Cumulative profit (£)": st.column_config.NumberColumn(format="£%,.0f"),
         "Gross outlay (£)": st.column_config.NumberColumn(format="£%,.0f"),
-        "P(target)": st.column_config.NumberColumn(format="%.1f%%"),
-        "P(all constraints)": st.column_config.NumberColumn(format="%.1f%%"),
-        **{ACTION_LABELS[n]: st.column_config.NumberColumn(format="%.3f") for n in ACTION_NAMES},
+        "Chance of CO₂ target": st.column_config.NumberColumn(format="%.1f%%"),
+        "Chance of all goals": st.column_config.NumberColumn(format="%.1f%%"),
+        **{ACTION_LABELS[n]: st.column_config.NumberColumn(format="%.1f%%") for n in ACTION_NAMES},
     })
     picked = {rec.strategy_id for rec in result.values()}
     pool = len(analysis.risk_results)
     st.caption(
-        f"Same baseline, constraints, optimization run and risk pool ({pool} strategies, "
-        f"{next(iter(analysis.risk_results.values())).n_simulations if pool else 0:,} trials each) for every policy; "
-        "selection is WS2's recommendation policy. "
+        f"All approaches use the same forecast, goals and assessed plans ({pool} plans, "
+        f"{next(iter(analysis.risk_results.values())).n_simulations if pool else 0:,} trials each). "
         + ("All three tolerances pick the same plan for these inputs. " if len(picked) == 1 else "")
-        + "Policies are compared, not ranked: no tolerance dominates another. Probabilities are finite-trial "
-        "estimates under illustrative uncertainty."
+        + "Each approach reflects a different risk preference. Probabilities are estimates under illustrative uncertainty."
     )
     for tol, rec in result.items():
         if rec.reason:
-            st.caption(f"**{tol}**: {rec.reason}")
+            st.caption(recommendation_text(rec))
 
 
 # --------------------------------------------------------------------------- #
@@ -533,11 +563,10 @@ def scenario_panel(state: DashboardState, services: Services, request: AnalysisR
 # --------------------------------------------------------------------------- #
 
 
-def assumptions_panel(assumptions: ActionAssumptions, is_mock: bool) -> None:
+def assumptions_panel(assumptions: ActionAssumptions) -> None:
     st.subheader("Assumptions")
     calibrated = "calibrated" if assumptions.is_calibrated else "**illustrative, not calibrated** company economics"
-    st.markdown(f"Action assumptions `{assumptions.assumptions_id}` v{assumptions.version} — {calibrated}. "
-                f"{assumptions.description}")
+    st.caption(f"Plans use {calibrated}. Review the assumptions before applying a plan.")
     st.markdown(
         "- Action values are fractions of the **remaining** eligible opportunity, implemented in month 1.\n"
         "- Budget = horizon gross outlay (capex + incremental opex); savings do not offset it.\n"
@@ -545,52 +574,53 @@ def assumptions_panel(assumptions: ActionAssumptions, is_mock: bool) -> None:
         "- CO₂ target compares strategy horizon emissions with baseline horizon emissions.\n"
         "- Intervention effects come from these versioned assumptions, not from the forecast model."
     )
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Emission partitions and effectiveness**")
-        rows = [(f, getattr(assumptions, f)) for f in (
-            "gas_share", "ice_fleet_share", "travel_share", "cloud_share", "supplier_share", "other_share",
-            "building_electricity_share", "building_gas_share", "building_max_reduction", "cloud_max_reduction",
-            "supplier_max_reduction", "renewable_effectiveness", "ev_effectiveness", "travel_effectiveness")]
-        st.dataframe(pd.DataFrame(rows, columns=["Parameter (ratio 0–1)", "Value"]), hide_index=True, width="stretch")
-    with c2:
-        st.markdown("**Costs at full implementation**")
-        costs = pd.DataFrame([
-            {"Action": ACTION_LABELS[n], "Capex (£)": c.capex_at_full_gbp, "Monthly opex (£)": c.monthly_opex_at_full_gbp,
-             "Asset life (months)": c.asset_life_months}
-            for n, c in ((n, assumptions.costs[n]) for n in ACTION_NAMES)
-        ])
-        st.dataframe(costs, hide_index=True, width="stretch", column_config={
-            "Capex (£)": st.column_config.NumberColumn(format="£%,.0f"),
-            "Monthly opex (£)": st.column_config.NumberColumn(format="£%,.0f"),
-        })
-        st.markdown("**Prices and factors**")
-        prices = [(f, getattr(assumptions, f)) for f in (
-            "electricity_gbp_per_kwh", "gas_gbp_per_kwh", "renewable_premium_gbp_per_kwh", "ice_fuel_gbp_per_km",
-            "travel_gbp_per_km", "cloud_gbp_per_hour", "supplier_monthly_savings_at_full_gbp", "ev_kwh_per_km",
-            "grid_tco2e_per_kwh")]
-        st.dataframe(pd.DataFrame(prices, columns=["Parameter (unit in name)", "Value"]), hide_index=True, width="stretch")
+    with st.expander("Action assumptions and costs"):
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Emission partitions and effectiveness**")
+            rows = [(f.replace("ice_fleet", "combustion fleet").replace("ev_", "electric vehicle ").replace("_", " ").capitalize(),
+                     getattr(assumptions, f) * 100) for f in (
+                "gas_share", "ice_fleet_share", "travel_share", "cloud_share", "supplier_share", "other_share",
+                "building_electricity_share", "building_gas_share", "building_max_reduction", "cloud_max_reduction",
+                "supplier_max_reduction", "renewable_effectiveness", "ev_effectiveness", "travel_effectiveness")]
+            st.dataframe(pd.DataFrame(rows, columns=["Assumption", "Share (%)"]), hide_index=True, width="stretch",
+                         column_config={"Share (%)": st.column_config.NumberColumn(format="%.1f%%")})
+        with c2:
+            st.markdown("**Costs at full implementation**")
+            costs = pd.DataFrame([
+                {"Action": ACTION_LABELS[n], "Capex (£)": c.capex_at_full_gbp, "Monthly opex (£)": c.monthly_opex_at_full_gbp,
+                 "Asset life (months)": c.asset_life_months}
+                for n, c in ((n, assumptions.costs[n]) for n in ACTION_NAMES)
+            ])
+            st.dataframe(costs, hide_index=True, width="stretch", column_config={
+                "Capex (£)": st.column_config.NumberColumn(format="£%,.0f"),
+                "Monthly opex (£)": st.column_config.NumberColumn(format="£%,.0f"),
+            })
+            st.markdown("**Prices and factors**")
+            price_labels = {
+                "electricity_gbp_per_kwh": "Electricity (£/kWh)", "gas_gbp_per_kwh": "Gas (£/kWh)",
+                "renewable_premium_gbp_per_kwh": "Renewable electricity premium (£/kWh)",
+                "ice_fuel_gbp_per_km": "Combustion fleet fuel (£/km)", "travel_gbp_per_km": "Business travel (£/km)",
+                "cloud_gbp_per_hour": "Cloud computing (£/hour)",
+                "supplier_monthly_savings_at_full_gbp": "Supplier savings at full implementation (£/month)",
+                "ev_kwh_per_km": "Electric vehicle energy (kWh/km)", "grid_tco2e_per_kwh": "Grid emissions (tCO₂e/kWh)",
+            }
+            prices = [(label, getattr(assumptions, field)) for field, label in price_labels.items()]
+            st.dataframe(pd.DataFrame(prices, columns=["Price or factor", "Value"]), hide_index=True, width="stretch",
+                         column_config={"Value": st.column_config.NumberColumn(format="%.4g")})
 
 
-def provenance_details(state: DashboardState, services: Services) -> None:
-    with st.expander("Provenance and run details"):
-        st.dataframe(pd.DataFrame([
-            {"Slot": slot, "Provider": info.name, "Kind": info.kind, "Version": info.version, "Mock": info.is_mock}
-            for slot, info in services.providers.items()
-        ]), hide_index=True, width="stretch")
-        if services.unavailable:
-            st.markdown("**Unavailable capabilities**")
-            for slot, reason in services.unavailable.items():
-                st.caption(f"{slot}: {reason}")
+def analysis_download(state: DashboardState) -> None:
+    with st.expander("Export analysis"):
         analysis = state.analysis
         if analysis is not None:
-            p = analysis.provenance
-            st.caption(f"Run `{analysis.run_id}` · input hash `{p.input_hash[:16]}…` · seed {p.seed} · "
-                       f"assumptions `{p.assumptions_id}` · is_mock {p.is_mock}")
             try:
                 payload = to_json(analysis, indent=2)
-            except CarbonOptError as exc:
-                st.caption(f"Bundle serialization failed: {exc}")
+            except CarbonOptError:
+                logger.exception("Analysis serialization failed")
+                st.info("The download could not be prepared. Please try again.")
             else:
-                st.download_button("Download analysis bundle (JSON)", payload, file_name=f"{analysis.run_id}.json",
+                st.download_button("Download analysis (JSON)", payload, file_name="carbonopt-analysis.json",
                                    mime="application/json")
+        else:
+            st.caption("Optimize a plan to download its results and assumptions.")

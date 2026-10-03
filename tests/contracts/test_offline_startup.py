@@ -73,37 +73,23 @@ def test_mock_pipeline_runs_offline_without_optional_libraries():
     assert proc.returncode == 0, proc.stderr
 
 
-def test_streamlit_app_starts_offline_in_mock_mode():
+def test_default_app_reports_missing_runtime_without_exposing_diagnostics():
+    # Required computational dependencies are deliberately blocked. Startup must
+    # fail visibly, never switch to fixtures, and keep implementation details in logs.
     proc = _run(
         """
-        from streamlit.testing.v1 import AppTest
-        at = AppTest.from_file("app.py", default_timeout=120).run()
-        assert not at.exception, [e.message for e in at.exception]
-        assert any("MOCK OUTPUT" in w.value for w in at.warning)
-        print("ok")
-        """
-    )
-    assert proc.returncode == 0, proc.stderr + proc.stdout
-
-
-def test_real_mode_reports_missing_p0_providers_without_crashing_the_app():
-    # The guard blocks pymoo (and WS1's model libraries). WS1's forecast provider binds lazily
-    # without importing them, so the missing P0 provider named here is WS2's optimizer.
-    proc = _run(
-        """
-        import os
-        os.environ["CARBONOPT_PROVIDER_MODE"] = "real"
         from streamlit.testing.v1 import AppTest
         at = AppTest.from_file("app.py", default_timeout=120).run()
         assert not at.exception, [e.message for e in at.exception]
         errors = [e.value for e in at.error]
-        assert any("Provider configuration error" in e and "optimizer" in e for e in errors), errors
-        assert any("missing dependency: pymoo" in e for e in errors), errors
-        assert not any("MOCK OUTPUT" in w.value or "PARTIALLY MOCKED" in w.value for w in at.warning)
+        assert any("Company analysis could not be loaded" in e for e in errors), errors
+        assert not any("pymoo" in e or "src." in e or "mock" in e for e in errors), errors
+        assert not at.slider and not at.warning
         print("ok")
         """
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "missing dependency: pymoo" in proc.stderr
 
 
 def test_chat_modules_import_and_mock_chat_runs_offline_without_optional_libraries():

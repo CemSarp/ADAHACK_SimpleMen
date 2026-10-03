@@ -35,3 +35,9 @@ def create_mock_provider(slot: str, variant: str | None = None) -> object:
     if variant not in variants:
         raise KeyError(f"no {variant!r} mock for slot {slot!r}; available: {sorted(variants)}")
     return variants[variant]()
+
+# Regression-test wiring for the fixture company and domain engines.
+FIXTURE_DOMAIN_OVERRIDES = {
+    "forecast": "fixture", "simulator": "real", "optimizer": "real",
+    "risk": "real", "shap": "disabled", "benchmark": "real",
+}

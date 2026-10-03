@@ -10,11 +10,11 @@ Python on the server; the browser never receives credentials or calls tools.
 from __future__ import annotations
 
 import os
+import logging
 from typing import Any, Mapping
 
 import streamlit as st
 
-from src.contracts.errors import CarbonOptError
 from src.contracts.types import ActionConfig, AnalysisRequest
 from src.integration.services import Services
 from src.llm.config import ChatbotConfig, ChatConfigurationError
@@ -24,13 +24,16 @@ from src.llm.summaries import gbp, pct, tonnes
 
 from .chat_state import SUGGESTIONS, ChatState
 from .state import DashboardState
+from .theme import GRID, PANEL, INK
+
+logger = logging.getLogger(__name__)
 
 LAUNCHER_KEY = "cc_launcher"
 PANEL_KEY = "cc_panel"
 
 
 def _css(dark: bool) -> str:
-    bg, fg, border = ("#1a1a19", "#ffffff", "#383835") if dark else ("#fcfcfb", "#0b0b0b", "#c3c2b7")
+    bg, fg, border = (PANEL, INK, GRID) if dark else ("#fcfcfb", "#0b0b0b", "#c3c2b7")
     return f"""<style>
 .st-key-{LAUNCHER_KEY} {{ position: fixed; left: 16px; bottom: 16px; z-index: 1000100; width: auto; }}
 .st-key-{LAUNCHER_KEY} button {{ width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
@@ -64,7 +67,7 @@ def _metric_lines(m: Mapping[str, Any]) -> str:
 def render_card(card: Mapping[str, Any], *, stale: bool, dash: DashboardState) -> None:
     data = card["data"]
     kind = data.get("kind")
-    mock = " · :orange-badge[MOCK]" if data.get("is_mock") else ""
+    mock = " · test data" if data.get("is_mock") else ""
     with st.container(border=True):
         if stale:
             st.caption("From a previous analysis context; re-ask to refresh. Apply is disabled.")
@@ -74,14 +77,13 @@ def render_card(card: Mapping[str, Any], *, stale: bool, dash: DashboardState) -
                         f"- Emissions: **{tonnes(t['total_co2e_tco2e'])}**\n"
                         f"- Operating profit: **{gbp(t['operating_profit_gbp'])}** · revenue {gbp(t['revenue_gbp'])}")
         elif kind == "simulation":
-            st.markdown(f"**What-if preview** · `{data['strategy_id']}`{mock}\n" + _metric_lines(data["metrics"]))
-            sh = data["resulting_shares"]
+            st.markdown(f"**What-if preview**{mock}\n" + _metric_lines(data["metrics"]))
             names = {"renewable_energy": "Renewable", "ev_adoption": "EV"}
             st.caption("Final shares (baseline → resulting): " + " · ".join(
                 f"{names[n]} {pct(v['baseline'])} → {pct(v['resulting'])}" for n, v in data["resulting_shares"].items()))
             for c in data["conversions"]:
                 st.caption(f"{c['action'].replace('_', ' ')}: final share {pct(c['target_final_share'])} = "
-                           f"{c['fraction_of_remaining']:.3f} of remaining opportunity")
+                           f"{pct(c['fraction_of_remaining'])} of remaining opportunity")
             f = data.get("feasibility")
             if f is not None:
                 st.caption("✅ Meets current constraints" if f["feasible"] else "⚠️ Does not meet: " + ", ".join(f["failed"]))
@@ -97,15 +99,15 @@ def render_card(card: Mapping[str, Any], *, stale: bool, dash: DashboardState) -
                 st.warning("No feasible plan found within the search budget.", icon="🚫")
             else:
                 r = data["recommended"]
-                st.markdown(f"Recommended `{r['strategy_id']}` of {data['pareto_count']} frontier plans\n" + _metric_lines(r["metrics"]))
+                st.markdown(f"Recommended action mix from {data['pareto_count']} frontier plans\n" + _metric_lines(r["metrics"]))
                 st.button("Load recommended into what-if", key=f"apply_{card['id']}", disabled=stale, on_click=_apply,
                           args=(dash, r["config"]))
             st.caption(data["note"])
         elif kind == "risk":
             s = data["summary"]
-            st.markdown(f"**Risk** · `{data['strategy_id']}` · {data['n_simulations']:,} trials{mock}\n"
-                        f"- P(target met): **{pct(s['target_probability'])}**\n"
-                        f"- P(all constraints): **{pct(s['joint_feasibility_probability'])}**\n"
+            st.markdown(f"**Uncertainty** · {data['n_simulations']:,} trials{mock}\n"
+                        f"- Chance of meeting CO₂ target: **{pct(s['target_probability'])}**\n"
+                        f"- Chance of meeting all goals: **{pct(s['joint_feasibility_probability'])}**\n"
                         f"- Emissions p05–p95: {tonnes(s['co2_p05_tco2e'])} – {tonnes(s['co2_p95_tco2e'])}")
             st.caption("Empirical trial outcomes conditional on the baseline forecast; not guarantees.")
 
@@ -130,11 +132,12 @@ def _render_message(m: Mapping[str, Any], *, context: AnalysisContext | None, da
         return
     with st.chat_message("assistant"):
         if m.get("is_mock"):
-            st.caption(":orange-badge[MOCK MODEL] rule-based stand-in, not a language model")
+            st.caption("Guided assistant · recognises preset questions and uses dashboard tools")
         if m["error"]:
             e = m["error"]
-            st.error(f"**{e['type']}**: {e['message']}", icon="🛑")
-            st.caption("Your message is kept. Nothing was replaced with mock output.")
+            logger.error("Assistant %s: %s", e['type'], e['message'])
+            st.error("The assistant could not answer this request. Please try again.", icon="🛑")
+            st.caption("Your message has been kept.")
             st.button("Retry", key=f"retry_{m['id']}", on_click=chat.retry, args=(m["turn"],),
                       help="Re-runs this message; completed tools are not executed again.")
             return
@@ -166,25 +169,13 @@ def render_chat(dash: DashboardState, services: Services, request: AnalysisReque
         clear.button("Clear", key="cc_clear", on_click=chat.clear, help="Clear this conversation (the dashboard is unchanged)")
         close.button("Close", key="cc_close", on_click=chat.set_open, args=(False,), help="Close the assistant")
         if config_error:
-            st.error(f"Chatbot configuration error: {config_error}", icon="🛑")
+            logger.error("Assistant configuration: %s", config_error)
+            st.error("The assistant is currently unavailable. Please contact the application administrator.", icon="🛑")
         elif provider is not None:
-            label = ":orange-badge[MOCK MODEL]" if provider.info.is_mock else f"`{provider.info.name}`"
-            st.caption(f"Model: {label} · answers use the dashboard's current analysis")
-            if not provider.info.is_mock:
-                st.button("Check connection", key="cc_check", help="Explicit request to the configured endpoint")
-                if st.session_state.get("cc_check"):
-                    try:
-                        status = provider.check_connection()
-                        chat.set_connection(status.ok, status.detail)
-                    except CarbonOptError as exc:
-                        chat.set_connection(False, f"{type(exc).__name__}: {exc}")
-                conn = chat.connection
-                if conn:
-                    (st.success if conn["ok"] else st.error)(conn["detail"])
-        if services.is_mock:
-            st.caption("Backend providers are mocked: " + ", ".join(services.mocked_slots) + ".")
+            label = "Guided assistant · recognises preset questions" if provider.info.is_mock else "Assistant"
+            st.caption(f"{label} · answers use your current analysis")
         if not services.capabilities.risk_available:
-            st.caption("Risk questions are unavailable: " + services.unavailable.get("risk", "no provider") + ".")
+            st.caption("Uncertainty analysis is currently unavailable.")
 
         area = st.container(height=240, key="cc_messages")
         with area:

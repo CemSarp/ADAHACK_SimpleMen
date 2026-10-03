@@ -141,7 +141,7 @@ The exact CLI implementation must agree with these commands or update the guide 
 
 ### Current integration state (all four workstreams integrated)
 
-`CARBONOPT_PROVIDER_MODE=real python -m streamlit run app.py` binds every slot to a real implementation. Full details, measurements and review list: [integration handoff](../../docs/handoffs/INTEGRATION_HANDOFF.md).
+`python -m streamlit run app.py` binds every slot to a real implementation. Full details, measurements and review list: [integration handoff](../../docs/handoffs/INTEGRATION_HANDOFF.md).
 
 | Slot | Bound to (actual entry point) |
 |---|---|

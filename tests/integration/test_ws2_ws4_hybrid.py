@@ -21,7 +21,8 @@ from src.contracts.types import ActionConfig, AnalysisRequest, ConstraintConfig,
 from src.dashboard.presentation import resulting_share
 from src.dashboard.state import INFEASIBLE, INITIAL, READY, DashboardState, slider_key
 from src.integration import real_providers, run_analysis
-from src.integration.services import DEFAULT_HYBRID_PRESET, create_services, preset_overrides
+from src.integration.services import create_services
+from tests.mocks import FIXTURE_DOMAIN_OVERRIDES
 from src.optimization.constraints import evaluate_constraints
 from tests.mocks import fixtures
 
@@ -42,7 +43,7 @@ class CountingRealSimulator(real_providers.RealSimulatorProvider):
 
 @pytest.fixture(scope="module")
 def hybrid():
-    return create_services(mode="hybrid", provider_overrides=preset_overrides(DEFAULT_HYBRID_PRESET))
+    return create_services(mode="hybrid", provider_overrides=dict(FIXTURE_DOMAIN_OVERRIDES))
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +84,7 @@ def test_noop_preserves_baseline_and_costs_nothing(hybrid):
 
 def test_real_optimizer_uses_the_bound_real_simulator(request_demo):
     simulator = CountingRealSimulator()
-    services = create_services(mode="hybrid", provider_overrides={**preset_overrides(DEFAULT_HYBRID_PRESET),
+    services = create_services(mode="hybrid", provider_overrides={**dict(FIXTURE_DOMAIN_OVERRIDES),
                                                                   "simulator": simulator})
     result = run_analysis(request_demo, services=services)
     diagnostics = result.optimization.diagnostics

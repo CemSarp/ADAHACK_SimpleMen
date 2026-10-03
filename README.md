@@ -15,7 +15,7 @@ A decision-support dashboard that forecasts a company's emissions and profit, si
 
 **Built by Team SimpleMen for ADAHACK.**
 
-[Quick start](#-quick-start) · [How it works](#-how-it-works) · [Run modes](#-provider-modes) · [Chatbot](#-assistant-chatbot) · [Project layout](#-project-layout) · [Docs](#-documentation)
+[Quick start](#-quick-start) · [How it works](#-how-it-works) · [Configuration](#-configuration) · [Chatbot](#-assistant-chatbot) · [Project layout](#-project-layout) · [Docs](#-documentation)
 
 </div>
 
@@ -32,7 +32,7 @@ A decision-support dashboard that forecasts a company's emissions and profit, si
 | 🎲 | **Monte Carlo risk** | Probability that a strategy still meets the budget and CO₂ target when assumptions are uncertain. |
 | 🏁 | **Peer benchmark** | Compares the forecast against an offline snapshot of peer companies. |
 | 💬 | **Assistant** | A floating chatbot that explains results and runs the same tools as the UI. |
-| 🔍 | **Provenance everywhere** | Every panel says whether its numbers are real, fixture or mock. Nothing is silently faked. |
+| 🔍 | **Transparent assumptions** | Synthetic data and illustrative action assumptions are labelled; full provenance is included in the analysis download. |
 
 ### The six actions
 
@@ -56,19 +56,19 @@ conda env create -f environment.yml      # creates the "adahack" env (Python 3.1
 conda activate adahack
 python -m pip install -r requirements.txt   # pins streamlit, pymoo, pytest to the tested versions
 
-CARBONOPT_PROVIDER_MODE=hybrid python -m streamlit run app.py
+python -m streamlit run app.py
 ```
 
 Open <http://localhost:8501>. Add `--server.port 8599` to change the port, or `--server.headless true` to skip opening a browser.
 
-**Try it:** the sidebar defaults (£500,000 budget, £1,000,000 cumulative profit floor, 20% CO₂ cut, seed 42, 2,048 evaluations) are a feasible demo. Click **Optimize** and the real search returns a 289-point frontier in a few seconds (about 6 s for the search alone on a laptop, more with charts). Set the budget to £0 to see the infeasible, no-recommendation state.
+**Try it:** the sidebar uses the configured company defaults (£20,000,000 implementation budget, £30,000,000 cumulative operating profit floor and a 10% CO₂ reduction target). Click **Optimize** to compare feasible plans. Set the budget to £0 to explore the no-recommendation state. The first forecast trains the configured models; later runs reuse saved results.
 
 Run `conda activate adahack` in every new terminal.
 
 ### Verify the install
 
 ```bash
-python -m pytest                              # 501 tests, ~85 s, fully offline
+python -m pytest                              # contract, unit and integration tests, offline by default
 python -m pytest tests/contracts tests/unit   # the fast subset CI runs first
 ```
 
@@ -76,21 +76,24 @@ One test is skipped by default: the live Ollama smoke test (see [Chatbot](#-assi
 
 ---
 
-## 🔌 Provider modes
+## 🔌 Configuration
 
-The app is built around swappable **providers**: forecast, simulator, optimizer, risk, benchmark and SHAP. Set the mode with `CARBONOPT_PROVIDER_MODE` or pick it in the sidebar.
+Launch with `python -m streamlit run app.py`. The dashboard uses one integrated path:
+the CSV-backed forecasting service, action simulator, NSGA-II optimizer, risk analysis
+and peer benchmarking. There is no provider selector or mode environment setting.
+Required service failures stop analysis with a user-facing message; details go to server logs.
 
-| Mode | Baseline | Simulator, optimizer | Risk, benchmark | SHAP |
-|---|---|---|---|---|
-| `mock` (default) | fixture | behavioral mock | fixtures | fixture |
-| **`hybrid`** (recommended) | fixture, labelled | **real** (WS2, NSGA-II) | **real** (WS3) | unavailable |
-| `real` | WS1 forecast required | real | real | when WS1 publishes it |
+`config/integration.json` binds the company CSV, import mapping, data provenance,
+forecast settings, action assumptions, uncertainty settings, peer benchmark and planning
+defaults. Set `CARBONOPT_CONFIG` to another configuration file when deploying a different
+company. The company ID comes from that file's import mapping.
 
-- **`hybrid`** is the working setup today. Its preset is *Fixture forecast + real WS2*, and you can switch to *Custom* in the sidebar to choose each provider yourself.
-- **`real`** does not start yet. It stops with *"required P0 providers are not available … src.forecasting.provider is not implemented yet"* until the WS1 forecast provider exists. It never substitutes a fixture.
-- The provenance line under the title always shows what is running, for example *Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: WS3 · SHAP: unavailable · Benchmark: WS3*.
+Explicit mock and hybrid service construction remains available only as a test injection
+seam. Test doubles and fixture/domain combinations are covered by the regression suite;
+they are not dashboard launch options.
 
-Other settings: `CARBONOPT_COMPANY_ID` (default `demo-company`) and `CARBONOPT_HYBRID_PRESET` (default `fixture-forecast-real-ws2`).
+The Model Selection panel compares methods on the historical dataset independently.
+It does not alter the configured planning forecast or its model identity.
 
 ---
 
@@ -100,7 +103,7 @@ Other settings: `CARBONOPT_COMPANY_ID` (default `demo-company`) and `CARBONOPT_H
 flowchart LR
     UI["Streamlit dashboard<br/>app.py + src/dashboard"] --> REG["Provider registry<br/>src/integration/services.py"]
     CHAT["Assistant<br/>src/llm"] --> REG
-    REG --> F["Forecast<br/>fixture today, WS1 later"]
+    REG --> F["Forecast<br/>Configured company CSV"]
     REG --> S["Simulator<br/>src/actions"]
     REG --> O["Optimizer + recommendation<br/>src/optimization"]
     REG --> R["Monte Carlo risk<br/>src/risk"]
@@ -131,26 +134,26 @@ All providers talk through typed, validated contracts in `src/contracts/`, which
 | Selected strategy | KPIs, constraint checks and feasibility badges |
 | Manual what-if | Sliders for each action, using the same simulator |
 | Monthly baseline vs scenarios | Month-by-month emissions and profit |
-| Optional capabilities | Monte Carlo risk (with tolerance and trial count), peer benchmark, SHAP |
-| Assumptions and provenance | The numbers behind the simulator and where each output came from |
+| Decision confidence | Uncertainty probabilities, peer comparison, risk preferences and existing forecast explanations when available |
+| Assumptions and export | Expandable action assumptions and costs, plus a full analysis download |
 
 ---
 
 ## 💬 Assistant (chatbot)
 
-A floating button at the bottom-left opens the assistant. By default it is a labelled **MOCK MODEL** (rule-based, offline). The real model is a **remote Ollama server** running `llama3.1:8b`. This repository only contains the client: it downloads no weights and installs no server.
+A floating button at the bottom-left opens the assistant. By default it is a **guided assistant** that recognises preset questions and runs dashboard tools offline. The real model is a **remote Ollama server** running `llama3.1:8b`. This repository only contains the client: it downloads no weights and installs no server.
 
 The model interprets language and explains results. It calls an allow-listed set of tools, and the app validates every call before running it through the same providers as the UI.
 
 The app does not auto-load `.env`, so export variables in your shell (copy [`.env.example`](.env.example) as a starting point):
 
 ```bash
-# mock model (default)
+# guided assistant (default)
 python -m streamlit run app.py
 
 # remote model, once you have an endpoint
 CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<your-ollama-host> \
-CARBONOPT_PROVIDER_MODE=hybrid python -m streamlit run app.py
+python -m streamlit run app.py
 ```
 
 | Variable | Meaning | Default |
@@ -161,7 +164,7 @@ CARBONOPT_PROVIDER_MODE=hybrid python -m streamlit run app.py
 | `OLLAMA_TIMEOUT_SECONDS` / `OLLAMA_MAX_OUTPUT_TOKENS` | Limits | `60` / `512` |
 | `OLLAMA_API_KEY` | Optional gateway bearer token | none |
 
-Use **Check connection** in the panel to test the endpoint. Remote failures are shown as errors and never fall back to the mock. To run the opt-in live test:
+Remote failures appear as a retryable user-facing error; server logs retain diagnostics. Connection-check APIs remain available for integration tests. To run the opt-in live test:
 
 ```bash
 RUN_OLLAMA_LIVE_SMOKE=1 CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<host> \
@@ -190,7 +193,7 @@ Add `--help` to any subcommand for its flags.
 
 ### Forecasting and data generation
 
-These two scripts are standalone and not wired into the dashboard yet.
+The generator creates source data. The modelling pipeline is also used by the forecasting adapter; the commands below can run independently.
 
 ```bash
 python synthetic_data_generation/synthetic_data_generator.py   # ~4 s, plots to synthetic_data_generation/temp_outputs/
@@ -207,14 +210,14 @@ The generator simulates 25 years of monthly logistics-company data. The modellin
 app.py                      Streamlit entry point
 src/
 ├── contracts/              Typed schemas, validation, errors, provider protocols
-├── integration/            Provider registry (mock / real / hybrid) and pipeline
+├── integration/            Company service registry and analysis pipeline
 ├── actions/                WS2  six-action simulator and financial accounting
 ├── optimization/           WS2  NSGA-II, Pareto, constraints, recommendation, CLI
 ├── risk/                   WS3  Monte Carlo risk
 ├── benchmarking/           WS3  offline peer benchmark
 ├── dashboard/              WS4  panels, charts, state, chat UI
 └── llm/                    WS4  chatbot client, tools, mock model
-ml_core/                    WS1  multi-target forecasting pipeline (standalone)
+ml_core/                    WS1  multi-target forecasting pipeline and model comparison
 synthetic_data_generation/  WS1  synthetic company data generator
 config/                     Action assumptions, uncertainty and benchmark settings
 data/                       Offline peer benchmark snapshot
@@ -223,14 +226,14 @@ carbonopt-ai-docs/          Specifications and handoffs
 docs/                       Workstream handoffs and chatbot notes
 ```
 
-### Workstream status
+### Integrated modules
 
-| Workstream | Scope | Status |
-|---|---|---|
-| **WS1** Data and ML | Forecasting, backtests, SHAP | Pipeline in `ml_core/` runs on its own. **Not yet published as a provider**, so the dashboard uses a labelled fixture baseline. |
-| **WS2** Actions and optimisation | Simulator, NSGA-II, recommendation | ✅ Integrated |
-| **WS3** Risk and benchmark | Monte Carlo, peer comparison | ✅ Integrated |
-| **WS4** Dashboard and chat | Streamlit UI, provider registry, assistant | ✅ Integrated |
+CSV import and forecasting feed simulation, optimization, recommendation, risk and
+benchmarking through validated contracts. Existing SHAP and assistant infrastructure
+is preserved. Further SHAP work and Llama textual explanations are separate tasks.
+
+The source company data remains synthetic and action economics remain illustrative;
+using domain services does not make the data reported or the assumptions calibrated.
 
 ---
 
@@ -264,7 +267,8 @@ To add a dependency, put it under `dependencies:` in `environment.yml` (or under
 
 | Symptom | Fix |
 |---|---|
-| `Provider configuration error` banner | You are in `real` mode. Switch to `hybrid`. |
+| Company analysis could not be loaded | Check server logs, installed requirements and `CARBONOPT_CONFIG` company files. |
+| Forecast logs mention OpenMP on macOS | Install the runtime with `brew install libomp`, or use the configured conda environment. |
 | `ModuleNotFoundError` for streamlit, pymoo or pytest | Activate `adahack`, then run `python -m pip install -r requirements.txt`. |
 | `ModuleNotFoundError: src` | Run commands from the repository root. |
 | Chat shows an error with `ollama` | `OLLAMA_BASE_URL` is unset or unreachable. Use `CHATBOT_PROVIDER=mock` to work offline. |

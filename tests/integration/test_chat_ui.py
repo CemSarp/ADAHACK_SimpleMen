@@ -1,4 +1,4 @@
-"""Streamlit AppTest coverage of the floating assistant (offline, mock model)."""
+"""Streamlit AppTest coverage of the floating guided assistant with integrated company services."""
 
 from __future__ import annotations
 
@@ -34,7 +34,8 @@ def texts(at):
 
 def test_p0_startup_without_any_chatbot_configuration():
     at = start()
-    assert any("MOCK OUTPUT" in w.value for w in at.warning)
+    assert not at.error
+    assert not any("MOCK" in w.value for w in at.warning)
     assert at.button(key="cc_toggle") is not None  # closed bubble is present
     assert not at.chat_message and not at.chat_input  # panel not rendered while closed
 
@@ -42,13 +43,14 @@ def test_p0_startup_without_any_chatbot_configuration():
 def test_bubble_opens_closes_and_preserves_conversation():
     at = start()
     at.button(key="cc_toggle").click().run()
-    assert at.chat_input and any("MOCK MODEL" in c.value for c in at.caption)
+    assert at.chat_input and any("Guided assistant" in c.value for c in at.caption)
     at.button(key="cc_sugg_1").click().run()  # "Show the baseline forecast."
-    assert not at.exception and "1,200.0 tCO2e" in " ".join(texts(at))
+    expected = f"{at.session_state['cos_baseline'].totals['total_co2e_tco2e']:,.1f} tCO2e"
+    assert not at.exception and expected in " ".join(texts(at))
     at.button(key="cc_close").click().run()
     assert not at.chat_message and not at.chat_input
     at.button(key="cc_toggle").click().run()
-    assert "1,200.0 tCO2e" in " ".join(texts(at))  # history survived close/reopen
+    assert expected in " ".join(texts(at))  # history survived close/reopen
 
 
 @pytest.mark.parametrize("index", range(5))
@@ -68,7 +70,7 @@ def test_typed_message_returns_a_result_card():
     at.chat_input[0].set_value("What if EV share becomes 80%?").run()
     assert not at.exception
     body = " ".join(texts(at))
-    assert "80.0%" in body and "mock backend output" in body
+    assert "80.0%" in body and "mock backend output" not in body
     assert [b for b in at.button if b.label == "Apply to dashboard"]
     at.button(key="cc_clear").click().run()
     assert not at.chat_message
@@ -84,7 +86,8 @@ def test_what_if_is_a_preview_until_applied():
     assert at.selectbox(key="co_widget_select").value == selected
     [b for b in at.button if b.label == "Apply to dashboard"][0].click().run()
     assert not at.exception
-    assert at.slider(key="co_slider_ev_adoption").value == pytest.approx(0.8)
+    baseline = at.session_state["cos_baseline"].monthly["ev_share"].iloc[0]
+    assert at.slider(key="co_slider_ev_adoption").value == pytest.approx((0.8 - baseline) / (1 - baseline))
     assert at.selectbox(key="co_widget_select").value == selected  # selected plan never overwritten
 
 
@@ -107,10 +110,10 @@ def test_ollama_without_endpoint_shows_error_and_dashboard_keeps_working(monkeyp
     at = start()
     optimize(at)  # dashboard unaffected
     at.button(key="cc_toggle").click().run()
-    assert any("Chatbot configuration error" in e.value for e in at.error)
+    assert any("assistant is currently unavailable" in e.value for e in at.error)
     at.chat_input[0].set_value("hello").run()
-    assert any("requires OLLAMA_BASE_URL" in e.value for e in at.error)
-    assert not any("MOCK MODEL" in c.value and "answers use" in c.value for c in at.caption)  # no silent mock
+    assert any("could not answer" in e.value for e in at.error)
+    assert not any("Guided assistant" in c.value and "answers use" in c.value for c in at.caption)  # no silent mock
 
 
 def test_ollama_unreachable_endpoint_is_a_visible_error_with_retry(monkeypatch):
@@ -121,13 +124,13 @@ def test_ollama_unreachable_endpoint_is_a_visible_error_with_retry(monkeypatch):
     at.button(key="cc_toggle").click().run()
     at.chat_input[0].set_value("Show the baseline forecast.").run()
     assert not at.exception
-    assert any("ChatConnectionError" in e.value for e in at.error)
+    assert any("could not answer" in e.value for e in at.error)
     assert any(b.label == "Retry" for b in at.button)
-    assert not any(c.value.startswith(":orange-badge[MOCK MODEL]") for c in at.caption)
+    assert not any(c.value.startswith("Guided assistant") for c in at.caption)
 
 
 def test_invalid_provider_value_does_not_break_startup(monkeypatch):
     monkeypatch.setenv("CHATBOT_PROVIDER", "gpt")
     at = start()
     at.button(key="cc_toggle").click().run()
-    assert any("CHATBOT_PROVIDER" in e.value for e in at.error)
+    assert any("assistant is currently unavailable" in e.value for e in at.error)

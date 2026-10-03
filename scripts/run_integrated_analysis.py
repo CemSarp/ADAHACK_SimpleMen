@@ -32,7 +32,7 @@ def main() -> None:
     args = ap.parse_args()
 
     t = time.perf_counter()
-    services = create_services(mode="real")
+    services = create_services()
     print(f"services: {time.perf_counter() - t:.2f}s")
     for slot, info in services.providers.items():
         print(f"  {slot:10s} {info.kind:5s} mock={info.is_mock} {info.name} {info.version}")

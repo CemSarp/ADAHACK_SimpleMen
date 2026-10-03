@@ -168,7 +168,6 @@ SHAP_COLUMNS: tuple[str, ...] = (
 )
 BENCHMARK_STATUSES: tuple[str, ...] = ("ok", "unavailable")
 
-ProviderMode = Literal["mock", "real", "hybrid"]
 Tolerance = Literal["conservative", "balanced", "aggressive"]
 
 

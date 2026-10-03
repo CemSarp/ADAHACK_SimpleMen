@@ -25,10 +25,10 @@ def pct(ratio: float | None) -> str:
 
 def summarize_payload(payload: Mapping[str, Any]) -> str:
     """payload = {"status", "tool_name", "data", "error"} as sent to the model."""
-    status, name = payload.get("status"), payload.get("tool_name")
+    status = payload.get("status")
     if status != "ok":
-        label = "unavailable" if status == "unavailable" else "failed"
-        return f"The {name} tool {label}: {payload.get('error')}"
+        label = "currently unavailable" if status == "unavailable" else "could not be completed"
+        return f"That analysis is {label}. Review your settings or try again."
     data = payload.get("data") or {}
     mock = " (mock backend output)" if data.get("is_mock") else ""
     kind = data.get("kind")
@@ -43,7 +43,7 @@ def summarize_payload(payload: Mapping[str, Any]) -> str:
                 f"({gbp(m['profit_change_gbp'])} vs baseline), gross outlay {gbp(m['total_cost_gbp'])}.")
         for c in data.get("conversions", []):
             text += (f" A final {c['action'].replace('_', ' ')} share of {pct(c['target_final_share'])} from a baseline "
-                     f"{pct(c['baseline_share'])} needs {c['fraction_of_remaining']:.3f} of the remaining opportunity.")
+                     f"{pct(c['baseline_share'])} needs {pct(c['fraction_of_remaining'])} of the remaining opportunity.")
         feas = data.get("feasibility")
         if feas is not None:
             text += " It meets all current constraints." if feas["feasible"] else (
@@ -55,7 +55,7 @@ def summarize_payload(payload: Mapping[str, Any]) -> str:
                     f"{mock}. Relaxing the budget, profit floor or target may help.")
         r = data["recommended"]
         m = r["metrics"]
-        return (f"Found {data['pareto_count']} feasible frontier plans{mock}. Recommended {r['strategy_id']}: emissions "
+        return (f"Found {data['pareto_count']} feasible frontier plans{mock}. Recommended action mix: emissions "
                 f"{tonnes(m['total_co2e_tco2e'])} ({pct(m['co2_reduction_ratio'])} reduction), profit "
                 f"{gbp(m['total_profit_gbp'])}, gross outlay {gbp(m['total_cost_gbp'])}.")
     if kind == "risk":

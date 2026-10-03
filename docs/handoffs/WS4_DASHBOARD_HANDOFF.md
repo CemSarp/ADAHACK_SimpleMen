@@ -1,5 +1,7 @@
 # WS4 Handoff: Dashboard, Integration and C0 Foundation
 
+> **Productisation update:** the app launches one CSV-backed company path with no provider selector. Earlier milestone descriptions below are historical. See [the current README](../../README.md) for launch and configuration instructions.
+
 > **Update (branch `feat/integration-all-workstreams`):** all four workstreams are integrated and `real` mode runs every provider for real on the synthetic company CSV. The current wiring, configuration, verification and review list are in [INTEGRATION_HANDOFF.md](INTEGRATION_HANDOFF.md); sections below describe earlier milestones.
 
 Branch: `feat/ws4-dashboard`, merged to `main` in PR #2; integrated with WS2 on `workstream2` (merge pending review).
@@ -16,7 +18,7 @@ python3.11 -m venv .venv
 .venv/bin/python -m streamlit run app.py
 ```
 
-`CARBONOPT_PROVIDER_MODE=mock|real|hybrid` sets the initial mode; the sidebar can change it. In hybrid mode, `CARBONOPT_HYBRID_PRESET` (default `fixture-forecast-real-ws2`) selects a named preset; `custom` restores the per-slot choices.
+The dashboard now uses the configured company services by default. Provider selectors and mode environment settings have been removed; explicit fixture/domain wiring is a regression-test concern.
 
 ## Provider wiring
 
@@ -39,11 +41,11 @@ python3.11 -m venv .venv
 
 - **One contract package.** WS4's `src/contracts/` is the schema; WS2's stopgap copy was dropped and WS2's domain code now reads and writes the WS4 types (mapping-based metrics, totals and risk summaries). Additive changes for review are listed in the WS2 handoff, "Shared contract changes".
 - **Provider wiring is unchanged.** `RealSimulatorProvider` and `RealOptimizerProvider` bind the documented WS2 functions. WS2 modules now expose `__version__`, so provider versions (and therefore cache keys) change when WS2 outputs can change.
-- **Hybrid preset.** `HYBRID_PRESETS["fixture-forecast-real-ws2"]` in `src/integration/services.py` is forecast `fixture`; simulator, optimizer, risk and benchmark `real`; shap `disabled`. Risk and benchmark resolve to *unavailable* with the reason until WS3 publishes factories, then bind without code changes. SHAP stays off because a fixture baseline has no model to explain. `Services.provenance_summary()` renders the "Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · …" line.
+- **Fixture/domain test wiring.** The former product preset is now `tests.mocks.FIXTURE_DOMAIN_OVERRIDES`, used by integration tests only.
 - **Dashboard.** A mixed run shows a **PARTIALLY MOCKED** banner (never "all real"), plus the provenance line. What-if badges use WS2's per-constraint `satisfied` flags.
 - **Single pool rule.** `pipeline.select_risk_pool` delegates to WS2's `risk_pool_from_frontier`, so the strategies sent to Monte Carlo are exactly the ones recommendation ranks.
 - **Optional pymoo.** `src.optimization` imports without pymoo. Mock startup still needs no solver; the real optimizer reports "missing dependency: pymoo" if it is absent.
-- **Tests.** `tests/integration/test_ws2_ws4_hybrid.py` and `test_dashboard_hybrid_apptest.py` cover the requested cross-boundary checks. Three WS4 tests that encoded "WS2 is missing" now assert the WS1-only gap.
+- **Tests.** `tests/integration/test_ws2_ws4_hybrid.py` and `test_product_dashboard.py` cover the requested cross-boundary checks. Three WS4 tests that encoded "WS2 is missing" now assert the WS1-only gap.
 - **Performance (one laptop, not a guarantee).** Optimize with 2,048 evaluations takes about 12 s end to end. Most of that is per-call boundary validation (`validate_baseline` about 1.6 ms per simulation; pipeline re-validation of all stored strategies about 2.5 s). Vectorizing those validators is a WS4 follow-up; nothing was skipped to save time.
 
 ## What WS4 owns

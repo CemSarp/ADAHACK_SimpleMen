@@ -1,5 +1,7 @@
 # WS2 Handoff — Action Engine, Constrained NSGA-II, Pareto and Recommendation
 
+> **Productisation update:** the app launches one CSV-backed company path with no provider selector. Earlier milestone descriptions below are historical. See [the current README](../../README.md) for launch and configuration instructions.
+
 Contract `1.0.0` · branch `workstream2` (WS4's `main` merged in, pending review) · audience: WS3 (risk), WS4 (dashboard and integration), WS1 (baseline producer)
 
 ## Status
@@ -18,13 +20,13 @@ The P1 risk-aware policy is implemented and tested on hand-authored `RiskResult`
 python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m pytest                                         # 333 tests
-CARBONOPT_PROVIDER_MODE=hybrid .venv/bin/python -m streamlit run app.py
+.venv/bin/python -m streamlit run app.py
 .venv/bin/python -m src.optimization.cli simulate --constraints tests/fixtures/v1/constraints.json
 .venv/bin/python -m src.optimization.cli optimize --max-evaluations 256
 .venv/bin/python -m src.optimization.cli profile
 ```
 
-In the sidebar the same configuration is *Provider mode → hybrid → Hybrid configuration → Fixture forecast + real WS2*. `CARBONOPT_HYBRID_PRESET=custom` restores WS4's per-slot choices.
+The dashboard has no provider controls. Tests inject the fixture/domain combination explicitly; the product uses the configured company forecast and domain services.
 
 | Provider slot | `hybrid` preset | Source |
 |---|---|---|
@@ -150,7 +152,7 @@ Before the merge, WS2's own NumPy validators gave about 0.8 ms per simulation an
 
 ## 7. Integration requirements
 
-- **WS1 (replacement point).** Publish `src.forecasting.provider.create_forecast_provider()` returning a provider with `info: ProviderInfo` (non-mock) whose `get_baseline()` returns a `BaselineBundle` that passes `validate_baseline` and the §4 compatibility rules. Then use `CARBONOPT_PROVIDER_MODE=real`; no WS2 or dashboard change is needed.
+- **WS1 (replacement point).** Publish `src.forecasting.provider.create_forecast_provider()` returning a provider with `info: ProviderInfo` (non-mock) whose `get_baseline()` returns a `BaselineBundle` that passes `validate_baseline` and the §4 compatibility rules. The dashboard now uses the integrated forecast by default; no WS2 or dashboard switch is needed.
 - **WS3.**
   - Publish risk and benchmark factories.
   - Run Monte Carlo through the injected simulator, using `apply_uncertainty_sample` with a unique `sample_id` per trial.

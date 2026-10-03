@@ -1,5 +1,7 @@
 # Integration Handoff: WS1 + WS2 + WS3 + WS4
 
+> **Productisation update:** the app launches one CSV-backed company path with no provider selector. Earlier milestone descriptions below are historical. See [the current README](../../README.md) for launch and configuration instructions.
+
 Branch `feat/integration-all-workstreams`, created from `main` at `aa68f7a` (which already contained every workstream's merged code). Contract `1.0.0`. Uncommitted, unpushed, untagged.
 
 **Status:** all six computational providers run as real implementations from the configured company CSV. The input data is **synthetic** and every screen and result says so. The all-real C4 milestone is **not** accepted: that needs the team review listed at the end. No `mvp-working` tag exists.
@@ -32,7 +34,7 @@ data/synthetic_data.csv  (synthetic, EUR, monthly 2001-01..2025-12)
 
 **Company binding.** When the forecast slot is the real CSV-backed WS1 provider, the real simulator, risk and benchmark providers load the company files named in `config/integration.json`. With a fixture forecast (hybrid preset, mock mode) they keep the demo files. A baseline is therefore never paired with another company's assumptions. This is tested.
 
-**Mock and hybrid** modes are unchanged and still labelled. Real mode never substitutes a mock. A missing P0 provider stops startup with the provider named; a missing optional provider disables only that capability.
+The product runs the company-backed services by default and never substitutes test doubles. Explicit mock/hybrid construction remains for regression tests. Required service failures stop startup with a user-facing message and server diagnostics; optional failures disable only the affected capability.
 
 ## 2. Input CSV and import adapter
 
@@ -85,7 +87,7 @@ python3.11 -m venv .venv
 .venv/bin/python -m pip install -r requirements-p1.txt     # P0 + shap
 .venv/bin/python -m src.forecasting.train                   # optional pre-train (about 6 min cold)
 .venv/bin/python -m pytest
-CARBONOPT_PROVIDER_MODE=real .venv/bin/python -m streamlit run app.py
+.venv/bin/python -m streamlit run app.py
 .venv/bin/python scripts/run_integrated_analysis.py         # headless reproduction with timings
 ```
 

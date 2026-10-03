@@ -1,5 +1,7 @@
 # WS2 Follow-ups
 
+> **Productisation update:** the app launches one CSV-backed company path with no provider selector. Earlier milestone descriptions below are historical. See [the current README](../../README.md) for launch and configuration instructions.
+
 Open work for Workstream 2 (actions, optimization, Pareto, recommendation) after integrating with WS4 on `workstream2` (merge of `main`, pending review). [WS2_HANDOFF.md](WS2_HANDOFF.md) describes what works; this file lists what does not yet. Each item names its owner, what blocks it, and what counts as done.
 
 ## Done during the WS2–WS4 integration
@@ -38,7 +40,7 @@ Open work for Workstream 2 (actions, optimization, Pareto, recommendation) after
 
 ## 3. Blocked on other workstreams
 
-- [ ] **WS1 baseline (C1), the replacement point.** WS1 publishes `src.forecasting.provider.create_forecast_provider()`; switch to `CARBONOPT_PROVIDER_MODE=real`; rerun the suite and the CLI against the real baseline. Expect compatibility errors for zero activities with allocated emissions (handoff §4); fix them in the baseline or the assumptions, not by loosening checks.
+- [ ] **WS1 baseline (C1), the replacement point.** WS1 publishes `src.forecasting.provider.create_forecast_provider()`; use the default integrated dashboard; rerun the suite and the CLI against the real baseline. Expect compatibility errors for zero activities with allocated emissions (handoff §4); fix them in the baseline or the assumptions, not by loosening checks.
 - [ ] **WS3 risk (C5a).** Run Monte Carlo on `select_risk_pool(...)` through `apply_uncertainty_sample`; add a test with real WS3 output, including zero-uncertainty parity; confirm the three tolerances against real summaries.
 - [ ] **Scenario comparison (C6, WS4)** on top of real risk.
 - [ ] **All-real C4 run** with no mock provenance, then the `mvp-working` tag (WS4).
