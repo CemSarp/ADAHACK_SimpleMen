@@ -14,6 +14,7 @@ from src.llm.context import AnalysisContext
 from src.llm.providers import ChatServerError, MockChatProvider
 from src.llm.tools import MAX_TOOL_EXECUTIONS_PER_MESSAGE
 from src.llm.types import ChatMessage, ModelResponse, ToolCall
+from tests.mocks import make_services
 
 
 class Scripted:
@@ -25,9 +26,6 @@ class Scripted:
         self.responses = list(responses)
         self.sent = []
         self.fail_at = fail_at
-
-    def check_connection(self):
-        raise NotImplementedError
 
     def chat(self, messages, tools):
         self.sent.append(list(messages))
@@ -144,7 +142,7 @@ def test_context_version_changes_with_inputs_selection_and_providers(ctx, mock_s
     assert replace(ctx, request=replace(ctx.request, constraints=replace(ctx.request.constraints, budget_gbp=1.0))).version != base
     assert replace(ctx, analysis=None).version != base
     from src.integration import create_services
-    assert replace(ctx, services=create_services(mode="mock", provider_overrides={"simulator": "fixture"})).version != base
+    assert replace(ctx, services=make_services({"simulator": "fixture"})).version != base
     assert replace(ctx).version == base
 
 
@@ -158,13 +156,3 @@ def test_mock_end_to_end_turn_grounds_text_in_tool_data(ctx):
     assert "UnsupportedMockInput" not in out.text  # internal diagnostics stay out of user copy
     assert "UnsupportedMockInput" in out.results[0].error
 
-
-def test_explain_analysis_template_uses_only_bundle_values(mock_services, request_ok):
-    a = run_analysis(request_ok, services=mock_services)
-    n = assistant.explain_analysis(a)
-    m = a.optimization.strategies[a.recommendation.strategy_id].metrics
-    assert n.is_template and n.provider == "template" and n.source_run_id == a.run_id and "mock providers" in n.text
-    assert f"{m['total_co2e_tco2e']:,.1f}" in n.text
-    from dataclasses import replace as r
-    bad = run_analysis(r(request_ok, constraints=r(request_ok.constraints, budget_gbp=0.0)), services=mock_services)
-    assert "No feasible strategy" in assistant.explain_analysis(bad).text

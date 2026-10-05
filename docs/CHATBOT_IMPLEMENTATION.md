@@ -26,7 +26,7 @@ Module layout (all under `src/llm/` except UI/state):
 | `src/llm/providers.py` | `ChatModelProvider` protocol, `OllamaChatProvider`, `MockChatProvider`, typed `Chat*Error`s |
 | `src/llm/context.py` | `AnalysisContext` (server-bound) and compact model-facing summary, `context_version` |
 | `src/llm/tools.py` | Allowlist, JSON schemas, argument validation, `execute_tool()` |
-| `src/llm/assistant.py` | Turn orchestration (tool loop, limits, duplicate-dispatch cache), `explain_analysis()` template |
+| `src/llm/assistant.py` | Turn orchestration (tool loop, limits, duplicate-dispatch cache) |
 | `src/llm/prompt.py` | System prompt |
 | `src/dashboard/chat_state.py` | Conversation state in session (no Streamlit import) |
 | `src/dashboard/chat_ui.py` | Floating bubble, panel, result cards |
@@ -47,7 +47,6 @@ Module layout (all under `src/llm/` except UI/state):
 class ChatModelProvider(Protocol):
     info: ProviderInfo
     def chat(self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec]) -> ModelResponse: ...
-    def check_connection(self) -> ConnectionStatus: ...
 ```
 
 `ModelResponse` carries `text` and zero or more `ToolCall(name, arguments: dict)`. Provider-specific transport stays inside `providers.py`.
@@ -137,5 +136,5 @@ Done when: the UI, orchestration, adapter, validation and tests pass offline; mo
 - A reachable Ollama server with `llama3.1:8b` pulled, and its URL (and gateway token if any). Not tested here.
 - Live verification of tool-calling quality with the real model; prompt tuning may be needed.
 - Real WS1-WS3 providers so tools run on real backends (the chatbot only calls existing services).
-- Review of the additive contract types (`ToolResult`, `NarrativeResult`) by WS1-WS3 consumers; no approval has occurred.
+- Review of the additive contract type (`ToolResult`) by WS1-WS3 consumers; no approval has occurred.
 - Optional streaming of final text.

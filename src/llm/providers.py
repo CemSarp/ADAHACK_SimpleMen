@@ -1,8 +1,7 @@
 """Model providers: Ollama (native /api/chat), LM Studio (OpenAI-compatible /v1) and a deterministic mock.
 
 Transport details stay in this module. Nothing here touches the network at
-import time or constructs a connection until `chat()` / `check_connection()` is
-called explicitly. A remote failure raises a typed ChatProviderError; the mock
+import time or constructs a connection until `chat()` is called. A remote failure raises a typed ChatProviderError; the mock
 is never substituted for it.
 """
 
@@ -19,7 +18,7 @@ from src.contracts.types import ProviderInfo
 
 from .config import ChatbotConfig, ChatConfigurationError
 from .summaries import summarize_payload
-from .types import ChatMessage, ConnectionStatus, ModelResponse, ToolCall, ToolSpec
+from .types import ChatMessage, ModelResponse, ToolCall, ToolSpec
 
 MOCK_VERSION = "mock-chat-v1"
 
@@ -53,8 +52,6 @@ class ChatModelProvider(Protocol):
     info: ProviderInfo
 
     def chat(self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec]) -> ModelResponse: ...
-
-    def check_connection(self) -> ConnectionStatus: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -177,16 +174,6 @@ class OllamaChatProvider:
             raise ChatInvalidResponse("model returned neither text nor a tool call")
         return ModelResponse(text=content, tool_calls=tuple(calls))
 
-    def check_connection(self) -> ConnectionStatus:
-        """Explicit user action: list models and confirm the configured tag exists."""
-        data = self._request("GET", "/api/tags", None)
-        names = tuple(str(m.get("name") or m.get("model")) for m in data.get("models", []) if isinstance(m, dict))
-        wanted = self._config.model
-        present = wanted in names or (":" not in wanted and f"{wanted}:latest" in names)
-        if present:
-            return ConnectionStatus(True, f"Connected; model {wanted} is available.", names)
-        return ConnectionStatus(False, f"Connected, but model {wanted} is not listed on the server.", names)
-
 
 # --------------------------------------------------------------------------- #
 # LM Studio (OpenAI-compatible chat completions)
@@ -251,15 +238,6 @@ class LMStudioChatProvider(OllamaChatProvider):
             raise ChatInvalidResponse("model returned neither text nor a tool call")
         return ModelResponse(text=content, tool_calls=tuple(calls))
 
-    def check_connection(self) -> ConnectionStatus:
-        """Explicit user action: list loaded/downloaded models and confirm the configured one exists."""
-        data = self._request("GET", "/models", None)
-        names = tuple(str(m.get("id")) for m in data.get("data", []) if isinstance(m, dict))
-        wanted = self._config.model
-        if wanted in names:
-            return ConnectionStatus(True, f"Connected; model {wanted} is available.", names)
-        return ConnectionStatus(False, f"Connected, but model {wanted} is not listed by LM Studio.", names)
-
 
 # --------------------------------------------------------------------------- #
 # Mock
@@ -290,9 +268,6 @@ class MockChatProvider:
         self.info = ProviderInfo(slot="chat", name="mock-chat-model", version=MOCK_VERSION, is_mock=True,
                                  kind="behavioral-mock")
 
-    def check_connection(self) -> ConnectionStatus:
-        return ConnectionStatus(True, "Mock model: no network connection is used.")
-
     def chat(self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec]) -> ModelResponse:
         last_user = max((i for i, m in enumerate(messages) if m.role == "user"), default=None)
         if last_user is None:
@@ -300,9 +275,9 @@ class MockChatProvider:
         tool_msgs = [m for m in messages[last_user + 1:] if m.role == "tool"]
         if tool_msgs:
             return ModelResponse(text="\n\n".join(summarize_payload(json.loads(m.content)) for m in tool_msgs))
-        return self._interpret(messages[last_user].content, messages[:last_user])
+        return self._interpret(messages[last_user].content)
 
-    def _interpret(self, text: str, history: Sequence[ChatMessage]) -> ModelResponse:
+    def _interpret(self, text: str) -> ModelResponse:
         t = text.lower().strip()
         share = re.search(rf"\b(ev|electric|renewable)\w*\b[^0-9]*{_NUM}\s*(%|percent)?", t)
         if share:

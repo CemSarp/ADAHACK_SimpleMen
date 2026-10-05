@@ -1,7 +1,7 @@
 """Shared-contract changes made while integrating WS2 with the WS4 C0 foundation.
 
 Each test pins one reviewed change (see docs/handoffs/WS2_HANDOFF.md, "Shared contract
-changes"), plus byte parity between the fixture kit and the documentation examples.
+changes").
 """
 
 from __future__ import annotations
@@ -18,15 +18,6 @@ from src.contracts.identity import compute_strategy_id
 from src.contracts.types import ActionConfig, ConstraintEvaluation, OptimizerConfig, RecommendationResult
 from tests.mocks import fixtures
 from tests.support import REPO_ROOT
-
-DOCS_EXAMPLES = REPO_ROOT / "carbonopt-ai-docs" / "examples"
-DOC_FIXTURES = sorted(p.name for p in DOCS_EXAMPLES.glob("*.json")) if DOCS_EXAMPLES.exists() else []
-
-
-@pytest.mark.parametrize("name", DOC_FIXTURES)
-def test_fixture_kit_matches_the_documentation_examples(name):
-    assert (fixtures.FIXTURE_DIR / name).read_bytes() == (DOCS_EXAMPLES / name).read_bytes()
-
 
 def test_config_assumption_file_matches_the_fixture():
     assert (REPO_ROOT / "config" / "action_assumptions.json").read_bytes() == (fixtures.FIXTURE_DIR / "action_assumptions.json").read_bytes()

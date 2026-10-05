@@ -42,7 +42,7 @@ Real company selection is outside the initial package scope. If annual company d
 
 ## Pending change requests (WS2–WS4 integration)
 
-Made while merging WS4's contract package into `workstream2`; each is pinned by `tests/contracts/test_shared_contract_changes.py` and listed in `docs/handoffs/WS2_HANDOFF.md` §5. They are additive or stricter validation within 1.0.x and await the listed approvals.
+Made while merging WS4's contract package into `workstream2`; each is pinned by `tests/contracts/test_shared_contract_changes.py`. They are additive or stricter validation within 1.0.x and await the listed approvals.
 
 | ID | Change | Approvers |
 |---|---|---|
@@ -51,7 +51,7 @@ Made while merging WS4's contract package into `workstream2`; each is pinned by 
 | R03 | Assumption files reject unknown fields, booleans as numbers and non-integral `asset_life_months` | WS2 + WS3 + WS4 |
 | R04 | `target_probability_mc_standard_error` null exactly when `target_probability` is null | WS3 + WS4 |
 | R05 | Optimizer seeds must be nonnegative; strategy identity maps `-0.0` to `0.0` | WS2 + WS4 |
-| R06 | `pymoo==0.6.2` joins the locked P0 requirements (imported lazily) | WS2 + WS4 |
+| R06 | `pymoo==0.6.2` joins the pinned requirements | WS2 + WS4 |
 
 ## Contract change workflow
 

@@ -4,8 +4,7 @@ from dataclasses import replace
 
 from src.contracts.types import OptimizerConfig, RiskConfig
 from src.integration import cache_keys
-from src.integration.services import create_services
-from tests.mocks import fixtures
+from tests.mocks import fixtures, make_services
 from tests.mocks.behavioral import BehavioralMockSimulator
 
 
@@ -44,10 +43,10 @@ def test_tolerance_only_changes_recommendation_key(request_ok, mock_services):
 
 
 def test_provider_identity_and_assumptions_are_part_of_keys(request_ok, mock_services):
-    fixture_sim = create_services(mode="mock", provider_overrides={"simulator": "fixture"})
+    fixture_sim = make_services({"simulator": "fixture"})
     assert cache_keys.analysis_key(request_ok, mock_services) != cache_keys.analysis_key(request_ok, fixture_sim)
     a = fixtures.assumptions()
-    alt = create_services(mode="mock", provider_overrides={"simulator": BehavioralMockSimulator(replace(a, version="1.0.1"))})
+    alt = make_services({"simulator": BehavioralMockSimulator(replace(a, version="1.0.1"))})
     assert cache_keys.analysis_key(request_ok, mock_services) != cache_keys.analysis_key(request_ok, alt)
     assert cache_keys.services_key(mock_services) != cache_keys.services_key(alt)
 

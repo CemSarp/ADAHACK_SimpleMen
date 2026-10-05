@@ -25,8 +25,6 @@ from src.contracts import validation as val
 from src.contracts.errors import (
     CarbonOptError,
     ContractValidationError,
-    ProviderConfigurationError,
-    ProviderError,
     UnsupportedHorizon,
 )
 from src.contracts.types import (
@@ -63,12 +61,7 @@ class ErrorInfo:
 
 
 def classify_error(exc: CarbonOptError) -> ErrorInfo:
-    if isinstance(exc, (ContractValidationError, UnsupportedHorizon)):
-        kind = VALIDATION_ERROR
-    elif isinstance(exc, (ProviderError, ProviderConfigurationError)):
-        kind = PROVIDER_ERROR
-    else:
-        kind = PROVIDER_ERROR
+    kind = VALIDATION_ERROR if isinstance(exc, (ContractValidationError, UnsupportedHorizon)) else PROVIDER_ERROR
     return ErrorInfo(kind=kind, error_type=type(exc).__name__, message=str(exc))
 
 

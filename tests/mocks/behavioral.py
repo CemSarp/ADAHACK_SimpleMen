@@ -8,7 +8,7 @@ it ignores scope buckets, energy interactions, savings and depreciation life.
 BehavioralMockOptimizer is a seeded random search with the documented
 constraint adapter and a plain nondominance filter. It is NOT NSGA-II and makes
 no optimality claim. It evaluates candidates only through the injected
-simulator, so it also works against a real simulator in hybrid mode.
+simulator, so it also works beside the real WS2 simulator.
 
 All outputs carry provenance.is_mock = true. Never import this module from
 production domain code.

@@ -45,8 +45,6 @@ def test_charts_render_from_fixture_and_behavioral_providers(dark, mock_services
         selected = opt.strategies[sid]
         charts.monthly_comparison(bundle.baseline, {"selected": selected, "whatif": selected}, dark=dark)
         charts.scope_totals(bundle.baseline, {"selected": selected}, dark=dark)
-        charts.backtest_predictions(bundle.backtest, "total_co2e_tco2e", dark=dark)
-        charts.history_and_baseline(fixtures.history(), bundle.baseline, "operating_profit_gbp", dark=dark)
 
 
 def test_pareto_chart_values_are_unchanged_provider_values(mock_services, request_ok):

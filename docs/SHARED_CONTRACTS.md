@@ -69,50 +69,23 @@ class SimulationFn(Protocol):
 ### WS1 — data, forecasting, backtest, SHAP
 
 ~~~python
-# src/data/generate.py
-def generate_company_timeseries(
-    *, company_id: str, start: str, periods: int, seed: int,
-    config: DataGenerationConfig
-) -> pd.DataFrame: ...
+# src/forecasting/history.py — explicit CSV import into the canonical history schema
+def load_company_history(csv_path: str | Path, import_config_path: str | Path) -> ImportedHistory: ...
 
-# src/data/features.py
-def build_supervised_dataset(
-    history: pd.DataFrame, *, feature_spec: FeatureSpec
-) -> SupervisedDataset: ...
+# src/forecasting/ws1_adapter.py — WS1 model lifecycle (ml_core.modelling), cached by model ID
+def load_or_train(imported: ImportedHistory, settings: Mapping, horizon: int, model_dir: str,
+                  *, retrain: bool = False) -> WS1Artifacts: ...
 
-# src/forecasting/train.py
-def train_models(
-    history: pd.DataFrame, *, feature_spec: FeatureSpec,
-    config: TrainingConfig, seed: int
-) -> ModelBundle: ...
+# src/forecasting/baseline.py — driver projection, scope reconciliation, public results
+def build_baseline(imported, artifacts, horizon, policy, *, data_kind, config_id, seed) -> BaselineBundle: ...
+def build_backtest(imported, artifacts, *, config_id, seed, driver_policy_id) -> BacktestReport: ...
 
-# src/data/drivers.py
-def project_future_drivers(
-    history: pd.DataFrame, *, horizon_months: int,
-    policy: DriverPolicy
-) -> pd.DataFrame: ...
-
-# src/forecasting/predict.py
-def forecast_baseline(
-    history: pd.DataFrame, models: ModelBundle, *,
-    horizon_months: int, future_drivers: pd.DataFrame
-) -> BaselineBundle: ...
-
-# src/forecasting/backtest.py
-def backtest_models(
-    history: pd.DataFrame, *, feature_spec: FeatureSpec,
-    training_config: TrainingConfig, config: BacktestConfig,
-    driver_policy: DriverPolicy, seed: int
-) -> BacktestReport: ...
-
-# src/explainability/shap_analysis.py
-def explain_forecast(
-    models: ModelBundle, baseline: BaselineBundle, *,
-    history: pd.DataFrame, max_rows: int = 12
-) -> ExplanationResult: ...
+# src/forecasting/provider.py, src/explainability/provider.py — bound by src/integration/services.py
+def create_forecast_provider(path: str | None = None) -> WS1ForecastProvider: ...
+def create_explanation_provider(path: str | None = None) -> WS1ShapProvider: ...
 ~~~
 
-Config field specifications are in [FORECASTING_SPEC.md](FORECASTING_SPEC.md). `future_drivers` excludes emission/profit targets and has exact dates matching the forecast horizon. WS1 generates it; other workstreams consume the completed baseline.
+Config field specifications are in [FORECASTING_SPEC.md](FORECASTING_SPEC.md). Future drivers exclude emission/profit targets and have exact dates matching the forecast horizon. WS1 generates them; other workstreams consume the completed baseline.
 
 ### WS2 — simulation and optimization
 
@@ -177,21 +150,13 @@ External adapters normalize data before it reaches `benchmark_company`. Benchmar
 ### WS4 — orchestration and optional explanation
 
 ~~~python
-# src/integration/services.py
-def create_services(
-    *, mode: Literal["mock", "real", "hybrid"],
-    provider_overrides: Mapping[str, object] | None = None
-) -> Services: ...
+# src/integration/services.py — real providers; overrides inject instances or disable (None) optional slots
+def create_services(overrides: Mapping[str, object | None] | None = None) -> Services: ...
 
 # src/integration/pipeline.py
 def run_analysis(
     request: AnalysisRequest, *, services: Services
 ) -> AnalysisBundle: ...
-
-# src/llm/assistant.py
-def explain_analysis(
-    analysis: AnalysisBundle, *, provider: ExplanationProvider | None
-) -> NarrativeResult: ...
 
 # src/llm/tools.py
 def execute_tool(
@@ -202,13 +167,13 @@ def execute_tool(
 
 `AnalysisRequest` fields: company ID, horizon, constraints, optimizer config, risk enabled, risk config, tolerance, benchmark enabled, explanation enabled. `AnalysisBundle` fields: baseline, backtest report, optimization, recommendation, optional risk results, optional SHAP/benchmark, warnings, common metadata. Manual what-if calls the simulator directly through services; it does not rerun training or optimization.
 
-Services contains forecast, simulator, optimizer, risk, benchmark, SHAP and narrative providers plus capability flags. Optional capability absence yields a disabled panel, not an import error in P0.
+Services contains forecast, simulator, optimizer, risk, benchmark and SHAP providers plus capability flags. Optional capability absence yields a disabled panel, not an import error in P0.
 
-Capabilities include `supported_horizons`, `risk_available`, `shap_available_targets`, `benchmark_available`, `narrative_available` and per-provider `is_mock`. Forecast provider binds the trusted model/history/driver policy but returns the public BaselineBundle. Shared consumer code never loads a model artifact directly.
+Capabilities include `supported_horizons`, `risk_available`, `shap_available_targets`, `benchmark_available`, `scenario_compare_available` and per-provider `is_mock`. Forecast provider binds the trusted model/history/driver policy but returns the public BaselineBundle. Shared consumer code never loads a model artifact directly.
 
 ### Chatbot additions (contract 1.x, additive; require producer/consumer review)
 
-`ToolResult(status, tool_name, validated_arguments, data, error)` and `NarrativeResult(status, text, source_run_id, provider, is_template)` are defined in `src/contracts/types.py` with the fields listed in the Tool/Narrative paragraph of DATA_SCHEMAS.md. `status` for tools is `ok`, `error` or `unavailable`; `data` is a plain JSON-safe mapping built from serialized public results. The model-provider boundary (`ChatModelProvider`: `chat(messages, tools) -> ModelResponse`, `check_connection()`) lives in `src/llm/providers.py`, not in contracts, because it is WS4-internal. `execute_tool(name, arguments, *, context, services)` binds `AnalysisContext` on the server side; `explain_analysis(analysis, *, provider=None)` has a deterministic template implementation. No existing field changed. See [docs/CHATBOT_IMPLEMENTATION.md](../../docs/CHATBOT_IMPLEMENTATION.md). Review status: not reviewed by WS1-WS3.
+`ToolResult(status, tool_name, validated_arguments, data, error)` is defined in `src/contracts/types.py` with the fields listed in the Tool/Narrative paragraph of DATA_SCHEMAS.md. `status` for tools is `ok`, `error` or `unavailable`; `data` is a plain JSON-safe mapping built from serialized public results. The model-provider boundary (`ChatModelProvider`: `chat(messages, tools) -> ModelResponse`) lives in `src/llm/providers.py`, not in contracts, because it is WS4-internal. `execute_tool(name, arguments, *, context, services)` binds `AnalysisContext` on the server side. No existing field changed. See [CHATBOT_IMPLEMENTATION.md](CHATBOT_IMPLEMENTATION.md). Review status: not reviewed by WS1-WS3.
 
 ### Integration notes (additive; require review)
 
@@ -225,7 +190,6 @@ No existing field or signature changed.
 |---|---|
 | Invalid column/type/range/unit/config | `ContractValidationError` with field and reason |
 | Unsupported 36/60-month P0 request | `UnsupportedHorizon` before computation |
-| Invalid/leaking feature configuration | `ForecastConfigurationError` |
 | Failed model training/prediction | `ForecastError`; no silent mock substitution |
 | No feasible optimization candidate | `OptimizationResult(status="infeasible")`, empty Pareto, diagnostics |
 | Unexpected solver failure | `OptimizationError`; visible UI error and retry |

@@ -42,10 +42,6 @@ class ProviderError(CarbonOptError, RuntimeError):
     """A provider failed at its public boundary. Never replaced by mock output."""
 
 
-class ForecastConfigurationError(ProviderError):
-    """Invalid or leaking feature/forecast configuration (WS1)."""
-
-
 class ForecastError(ProviderError):
     """Model training or prediction failed (WS1)."""
 
@@ -71,12 +67,8 @@ class UnsupportedMockInput(ProviderError):
 
 
 class ProviderConfigurationError(CarbonOptError, RuntimeError):
-    """Services could not be wired, e.g. a required P0 provider is missing in
-    real mode. Raised at service creation, before any computation."""
-
-    def __init__(self, message: str, *, missing: tuple[str, ...] = ()) -> None:
-        self.missing = tuple(missing)
-        super().__init__(message)
+    """Services could not be wired (unknown slot, disabled required slot).
+    Raised at service creation, before any computation."""
 
 
 class CapabilityUnavailable(CarbonOptError, RuntimeError):

@@ -14,8 +14,9 @@ from src.contracts import serialization as ser
 from src.contracts import validation as val
 from src.contracts.protocols import BenchmarkProvider, RiskProvider
 from src.contracts.types import AnalysisBundle, RiskConfig
-from src.integration import create_services, run_analysis
-from src.integration.pipeline import select_risk_pool
+from src.integration import run_analysis
+from src.optimization.recommendation import risk_pool_from_frontier
+from tests.mocks import make_services
 
 OVERRIDES = {"risk": "real", "benchmark": "real"}
 
@@ -37,12 +38,12 @@ def repo_copy(monkeypatch, tmp_path):
 
 def _assert_p0_and_risk_ok(bundle: AnalysisBundle) -> None:
     assert bundle.optimization.status == "ok" and bundle.recommendation.strategy_id is not None
-    assert set(bundle.risk_results) == set(select_risk_pool(bundle.optimization.pareto))
+    assert set(bundle.risk_results) == set(risk_pool_from_frontier(bundle.optimization.pareto))
     assert ser.from_json(AnalysisBundle, ser.to_json(bundle)).benchmark == bundle.benchmark
 
 
 def test_hybrid_discovers_both_ws3_providers():
-    services = create_services(mode="hybrid", provider_overrides=OVERRIDES)
+    services = make_services(OVERRIDES)
     assert isinstance(services.risk, RiskProvider) and isinstance(services.benchmark, BenchmarkProvider)
     info = services.providers["benchmark"]
     assert (info.slot, info.kind, info.is_mock) == ("benchmark", "real", False)
@@ -51,7 +52,7 @@ def test_hybrid_discovers_both_ws3_providers():
 
 
 def test_pipeline_with_risk_and_benchmark(full_request):
-    services = create_services(mode="hybrid", provider_overrides=OVERRIDES)
+    services = make_services(OVERRIDES)
     bundle = run_analysis(full_request, services=services)
     b = bundle.benchmark
     val.validate_benchmark_result(b)
@@ -74,7 +75,7 @@ def test_pipeline_with_risk_and_benchmark(full_request):
 ])
 def test_missing_or_corrupt_snapshot_leaves_p0_and_risk_usable(repo_copy, full_request, damage, code):
     damage(repo_copy)
-    services = create_services(mode="hybrid", provider_overrides=OVERRIDES)
+    services = make_services(OVERRIDES)
     bundle = run_analysis(full_request, services=services)
     b = bundle.benchmark
     assert b.status == "unavailable" and b.reason.startswith(f"source_unavailable: {code}")
@@ -84,7 +85,7 @@ def test_missing_or_corrupt_snapshot_leaves_p0_and_risk_usable(repo_copy, full_r
 
 
 def test_snapshot_changed_after_binding_is_unavailable(repo_copy, full_request):
-    services = create_services(mode="hybrid", provider_overrides=OVERRIDES)
+    services = make_services(OVERRIDES)
     csv = repo_copy / "data/benchmark.csv"
     csv.write_text(csv.read_text().replace("2000,", "2001,", 1))
     bundle = run_analysis(full_request, services=services)
@@ -109,7 +110,7 @@ def test_unexpected_bug_surfaces(monkeypatch, full_request):
         raise RuntimeError("programming bug")
 
     monkeypatch.setattr(bench_provider, "benchmark_company", broken)
-    services = create_services(mode="hybrid", provider_overrides=OVERRIDES)
+    services = make_services(OVERRIDES)
     with pytest.raises(RuntimeError, match="programming bug"):
         run_analysis(full_request, services=services)
 
@@ -130,12 +131,12 @@ def test_invalid_uncertainty_config_disables_only_risk(monkeypatch, tmp_path, fu
     if content is not None:
         path.write_text(content)
     monkeypatch.setattr(risk_provider, "DEFAULT_UNCERTAINTY_PATH", path)
-    services = create_services(mode="hybrid", provider_overrides=OVERRIDES)
+    services = make_services(OVERRIDES)
     assert services.risk is None and not services.capabilities.risk_available
-    assert "create_risk_provider() configuration is invalid: uncertainty" in services.unavailable["risk"]
+    assert services.unavailable["risk"].startswith("uncertainty")
     bundle = run_analysis(full_request, services=services)
     assert bundle.optimization.status == "ok" and bundle.risk_results == {}
-    assert any(w.startswith("Risk is unavailable: src.risk.provider") for w in bundle.warnings)
+    assert any(w.startswith("Risk is unavailable: uncertainty") for w in bundle.warnings)
     assert bundle.benchmark.status == "ok"  # other optional capability unaffected
 
 
@@ -148,9 +149,9 @@ def test_invalid_uncertainty_config_disables_only_risk(monkeypatch, tmp_path, fu
 ], ids=["missing", "bad_json", "no_source", "invalid_value", "unknown_field"])
 def test_invalid_benchmark_config_disables_only_benchmark(repo_copy, full_request, damage):
     damage(repo_copy / "config/benchmark.json")
-    services = create_services(mode="hybrid", provider_overrides=OVERRIDES)
+    services = make_services(OVERRIDES)
     assert services.benchmark is None and not services.capabilities.benchmark_available
-    assert "create_benchmark_provider() configuration is invalid: benchmark_config" in services.unavailable["benchmark"]
+    assert services.unavailable["benchmark"].startswith("benchmark_config")
     bundle = run_analysis(full_request, services=services)
     assert bundle.benchmark is None and any(w.startswith("Benchmark is unavailable") for w in bundle.warnings)
     _assert_p0_and_risk_ok(bundle)
@@ -164,4 +165,4 @@ def test_factory_programming_error_still_surfaces(monkeypatch):
 
     monkeypatch.setattr(risk_provider, "load_uncertainty", bug)
     with pytest.raises(TypeError, match="programming bug"):
-        create_services(mode="hybrid", provider_overrides=OVERRIDES)
+        make_services(OVERRIDES)

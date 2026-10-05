@@ -1,7 +1,7 @@
 """Reproduce the integrated all-real analysis from the configured company CSV.
 
-    python scripts/run_integrated_analysis.py                    # uses config/integration.json
-    python scripts/run_integrated_analysis.py --trials 1000 --evaluations 2048
+    python -m scripts.run_integrated_analysis                    # uses config/integration.json
+    python -m scripts.run_integrated_analysis --trials 1000 --evaluations 2048
 
 Runs: CSV -> WS1 baseline + backtest -> WS2 NSGA-II/Pareto -> WS3 risk over the
 bounded frontier pool -> WS2 risk-aware recommendation -> SHAP -> benchmark ->
@@ -12,16 +12,12 @@ Prints timings and results. Numbers describe SYNTHETIC data.
 from __future__ import annotations
 
 import argparse
-import sys
 import time
 from dataclasses import replace
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig  # noqa: E402
-from src.integration import create_services, run_analysis  # noqa: E402
-from src.integration.pipeline import compare_scenarios  # noqa: E402
+from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig
+from src.integration import create_services, run_analysis
+from src.integration.pipeline import compare_scenarios
 
 
 def main() -> None:

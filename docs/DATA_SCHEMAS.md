@@ -92,7 +92,7 @@ The baseline monthly frame has exactly the history schema and forecast dates. Pr
 }
 ~~~
 
-The empty `monthly` above is structural shorthand, not a valid complete baseline. [The baseline example](../examples/baseline_12m.json) provides all 12 rows. The full object must have exactly `horizon_months` contiguous rows starting one month after `history_end`, one company, and totals equal to sums.
+The empty `monthly` above is structural shorthand, not a valid complete baseline. [The baseline example](../tests/fixtures/v1/baseline_12m.json) provides all 12 rows. The full object must have exactly `horizon_months` contiguous rows starting one month after `history_end`, one company, and totals equal to sums.
 
 ## 5. Action and constraint configuration
 

@@ -1,6 +1,6 @@
-"""P0 imports and startup need no optional dependency, network or model file.
+"""Imports and mock startup need no ML library, network or model file.
 
-Each check runs in a fresh interpreter with a meta-path blocker for optional
+Each check runs in a fresh interpreter with a meta-path blocker for the heavy ML
 libraries and a socket guard, so results do not depend on what the developer
 happens to have installed.
 """
@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = textwrap.dedent(
     """
     import importlib.abc, socket, sys
-    BLOCKED = {"lightgbm", "xgboost", "shap", "pymoo", "scipy", "sklearn", "requests", "openai", "anthropic"}
+    BLOCKED = {"lightgbm", "xgboost", "shap", "sklearn", "requests", "openai", "anthropic"}
 
     class Blocker(importlib.abc.MetaPathFinder):
         def find_spec(self, name, path=None, target=None):
@@ -61,8 +61,9 @@ def test_mock_pipeline_runs_offline_without_optional_libraries():
     proc = _run(
         """
         from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig
-        from src.integration import create_services, run_analysis
-        services = create_services(mode="mock")
+        from src.integration import run_analysis
+        from tests.mocks import make_services
+        services = make_services()
         bundle = run_analysis(AnalysisRequest(company_id="demo-company", horizon_months=12,
             constraints=ConstraintConfig(500000.0, 1000000.0, 0.2), optimizer_config=OptimizerConfig(max_evaluations=64),
             risk_enabled=True, benchmark_enabled=True, explanation_enabled=True), services=services)
@@ -73,23 +74,25 @@ def test_mock_pipeline_runs_offline_without_optional_libraries():
     assert proc.returncode == 0, proc.stderr
 
 
-def test_default_app_reports_missing_runtime_without_exposing_diagnostics():
-    # Required computational dependencies are deliberately blocked. Startup must
-    # fail visibly, never switch to fixtures, and keep implementation details in logs.
+def test_app_reports_a_broken_company_config_without_exposing_diagnostics():
+    # A required service that cannot load must stop startup visibly, never switch to
+    # fixtures, and keep implementation details in the server log.
     proc = _run(
         """
+        import os
+        os.environ["CARBONOPT_CONFIG"] = "config/does-not-exist.json"
         from streamlit.testing.v1 import AppTest
         at = AppTest.from_file("app.py", default_timeout=120).run()
         assert not at.exception, [e.message for e in at.exception]
         errors = [e.value for e in at.error]
         assert any("Company analysis could not be loaded" in e for e in errors), errors
-        assert not any("pymoo" in e or "src." in e or "mock" in e for e in errors), errors
+        assert not any("does-not-exist" in e or "src." in e or "mock" in e for e in errors), errors
         assert not at.slider and not at.warning
         print("ok")
         """
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
-    assert "missing dependency: pymoo" in proc.stderr
+    assert "does-not-exist.json" in proc.stderr
 
 
 def test_chat_modules_import_and_mock_chat_runs_offline_without_optional_libraries():
@@ -99,14 +102,15 @@ def test_chat_modules_import_and_mock_chat_runs_offline_without_optional_librari
         assert "streamlit" not in sys.modules, "src.llm must not import Streamlit"
         assert "requests" not in sys.modules
         from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig
-        from src.integration import create_services, run_analysis
+        from src.integration import run_analysis
+        from tests.mocks import make_services
         from src.llm.assistant import TurnRecord, run_turn
         from src.llm.config import ChatbotConfig
         from src.llm.context import AnalysisContext
         from src.llm.providers import create_chat_provider
         provider = create_chat_provider(ChatbotConfig.from_env({}))
         assert provider.info.is_mock
-        services = create_services(mode="mock")
+        services = make_services()
         req = AnalysisRequest(company_id="demo-company", horizon_months=12,
                               constraints=ConstraintConfig(500000.0, 1000000.0, 0.2), optimizer_config=OptimizerConfig(max_evaluations=64))
         a = run_analysis(req, services=services)
@@ -127,8 +131,9 @@ def test_ollama_provider_makes_no_request_until_called():
         from src.llm.providers import create_chat_provider
         p = create_chat_provider(ChatbotConfig.from_env({"CHATBOT_PROVIDER": "ollama", "OLLAMA_BASE_URL": "http://llm.example.test"}))
         assert not p.info.is_mock
+        from src.llm.types import ChatMessage
         try:
-            p.check_connection()
+            p.chat([ChatMessage("user", "hi")], [])
         except RuntimeError as exc:  # the guard's network error is surfaced as a typed provider error, not hidden
             print("failed-visibly")
         """

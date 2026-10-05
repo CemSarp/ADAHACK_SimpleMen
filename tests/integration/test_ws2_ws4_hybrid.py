@@ -1,4 +1,4 @@
-"""WS2 x WS4 hybrid integration: fixture forecast + real WS2 simulator/optimizer/recommendation.
+"""WS2 x WS4 integration: fixture forecast + real WS2 simulator/optimizer/recommendation.
 
 Exercises the documented preset end to end through WS4's services, pipeline and dashboard
 state. Search runs are seeded with an explicit evaluation budget; nothing here asserts a
@@ -15,21 +15,19 @@ import pytest
 
 from src.actions.engine import compute_action_breakdown, simulate_strategy
 from src.contracts import validation as val
-from src.contracts.errors import ProviderConfigurationError
 from src.contracts.identity import config_from_row
 from src.contracts.types import ActionConfig, AnalysisRequest, ConstraintConfig, OptimizerConfig
 from src.dashboard.presentation import resulting_share
 from src.dashboard.state import INFEASIBLE, INITIAL, READY, DashboardState, slider_key
-from src.integration import real_providers, run_analysis
-from src.integration.services import create_services
-from tests.mocks import FIXTURE_DOMAIN_OVERRIDES
+from src.actions.provider import WS2SimulatorProvider
+from src.integration import run_analysis
 from src.optimization.constraints import evaluate_constraints
-from tests.mocks import fixtures
+from tests.mocks import FIXTURE_DOMAIN_OVERRIDES, fixtures, make_services
 
 SEARCH = OptimizerConfig(seed=42, population_size=32, generations=8, max_evaluations=256)
 
 
-class CountingRealSimulator(real_providers.RealSimulatorProvider):
+class CountingRealSimulator(WS2SimulatorProvider):
     """The real WS2 provider, counting calls so tests can prove which simulator ran."""
 
     def __init__(self) -> None:
@@ -43,7 +41,7 @@ class CountingRealSimulator(real_providers.RealSimulatorProvider):
 
 @pytest.fixture(scope="module")
 def hybrid():
-    return create_services(mode="hybrid", provider_overrides=dict(FIXTURE_DOMAIN_OVERRIDES))
+    return make_services(dict(FIXTURE_DOMAIN_OVERRIDES))
 
 
 @pytest.fixture(scope="module")
@@ -84,7 +82,7 @@ def test_noop_preserves_baseline_and_costs_nothing(hybrid):
 
 def test_real_optimizer_uses_the_bound_real_simulator(request_demo):
     simulator = CountingRealSimulator()
-    services = create_services(mode="hybrid", provider_overrides={**dict(FIXTURE_DOMAIN_OVERRIDES),
+    services = make_services({**dict(FIXTURE_DOMAIN_OVERRIDES),
                                                                   "simulator": simulator})
     result = run_analysis(request_demo, services=services)
     diagnostics = result.optimization.diagnostics
@@ -199,25 +197,11 @@ def test_infeasible_result_has_no_recommendation_or_selection(state, hybrid, req
 
 
 def test_hybrid_provenance_names_every_provider(hybrid, bundle):
-    assert hybrid.provenance_summary() == (
-        "Baseline: fixture · Simulator: WS2 · Optimizer: WS2 · Risk: WS3 · SHAP: unavailable · "
-        "Benchmark: WS3"
-    )
     kinds = {slot: (info.kind, info.is_mock) for slot, info in bundle.providers.items()}
     assert kinds == {"forecast": ("fixture", True), "simulator": ("real", False), "optimizer": ("real", False)}
     # One fixture input means the analysis as a whole is never labelled real.
     assert bundle.provenance.is_mock and bundle.optimization.provenance.is_mock
     assert bundle.recommendation.provenance.is_mock
-
-
-def test_real_mode_fails_explicitly_while_ws1_is_missing(monkeypatch):
-    from tests.support import hide_ws1_forecast
-
-    hide_ws1_forecast(monkeypatch)
-    with pytest.raises(ProviderConfigurationError) as exc:
-        create_services(mode="real")
-    assert exc.value.missing == ("forecast",)
-    assert "src.forecasting.provider is not implemented yet" in str(exc.value)
 
 
 def test_ws3_optional_capabilities_do_not_break_startup_or_analysis(hybrid, request_demo):

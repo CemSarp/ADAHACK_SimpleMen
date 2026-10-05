@@ -1,4 +1,4 @@
-"""WS3 risk provider factory discovered by src.integration.real_providers.
+"""WS3 risk provider factory (bound by src/integration/services.py).
 
 The provider binds one UncertaintySpec and delegates to evaluate_strategy_risk.
 `info.is_mock` is False (this is the implemented Monte Carlo); each RiskResult

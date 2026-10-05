@@ -56,10 +56,6 @@ def period_label(timestamps: pd.Series) -> str:
     return f"{first:%b %Y} – {last:%b %Y} ({len(timestamps)} months)"
 
 
-def trailing_window(history: pd.DataFrame, months: int = 12) -> pd.DataFrame:
-    return history.sort_values("timestamp").tail(months)
-
-
 @dataclass(frozen=True)
 class ShareRange:
     baseline_min: float

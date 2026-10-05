@@ -30,13 +30,12 @@ def _optimize(at, *, risk: bool) -> None:
     assert not at.exception, [e.message for e in at.exception]
 
 
-def test_real_mode_uses_company_defaults_and_shows_real_backtest(app):
+def test_real_mode_uses_company_defaults(app):
     assert app.number_input(key="co_widget_budget").value == 20_000_000.0
     assert app.number_input(key="co_widget_profit").value == 30_000_000.0
     assert app.slider(key="co_widget_target").value == 10
     captions = " ".join(_texts(app.caption))
     assert "Synthetic data" in captions
-    assert "predictions one month ahead" in captions
     assert app.session_state["cos_baseline"].company_id == "supply-chain-demo-co"
 
 

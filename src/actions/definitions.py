@@ -8,7 +8,6 @@ the shared contract package; this module only adds WS2 semantics on top of them.
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import json
 from dataclasses import dataclass
@@ -17,16 +16,11 @@ from typing import Callable, Mapping, Sequence
 
 import numpy as np
 
-from src.contracts import ACTION_NAMES, ActionAssumptions, ActionConfig, ActionCost, BaselineBundle
+from src.contracts import ACTION_NAMES, ActionAssumptions, ActionConfig, BaselineBundle
 from src.contracts import serialization as ser
 from src.contracts import validation as val
 from src.contracts.errors import ContractValidationError
-from src.contracts.identity import (
-    STRATEGY_ID_HEX_LENGTH,
-    STRATEGY_ID_PREFIX,
-    canonical_hash,
-    strategy_identity_payload,
-)
+from src.contracts.identity import STRATEGY_ID_HEX_LENGTH, canonical_hash, strategy_id_from_identity
 from src.contracts.types import HISTORY_COLUMNS
 
 __version__ = "ws2-actions-1.1.0"
@@ -124,26 +118,9 @@ def config_from_vector(values: Sequence[float] | np.ndarray) -> ActionConfig:
 
 
 # ---------------------------------------------------------------------------
-# Strategy identity (ACTION_MODEL.md §6). The payload is the shared contract
-# definition; WS2 adds only truncated-ID collision handling.
+# Strategy identity (ACTION_MODEL.md §6) lives in src/contracts/identity.py;
+# WS2 adds only truncated-ID collision handling.
 # ---------------------------------------------------------------------------
-
-
-def strategy_identity(baseline_id: str, config: ActionConfig, *, assumptions_id: str, assumptions_version: str) -> str:
-    """Canonical identity: sorted-key compact JSON of baseline, full-precision config, assumptions."""
-    return strategy_identity_payload(baseline_id, config, assumptions_id, assumptions_version)
-
-
-def strategy_id_from_identity(identity: str, *, hex_length: int = STRATEGY_ID_HEX_LENGTH) -> str:
-    return STRATEGY_ID_PREFIX + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:hex_length]
-
-
-def compute_strategy_id(baseline_id: str, config: ActionConfig, assumptions: ActionAssumptions) -> str:
-    """Stable 16-hex strategy ID for (baseline, exact config, immutable assumption ID/version)."""
-    identity = strategy_identity(
-        baseline_id, config, assumptions_id=assumptions.assumptions_id, assumptions_version=assumptions.version
-    )
-    return strategy_id_from_identity(identity)
 
 
 def assign_strategy_id(
@@ -191,84 +168,3 @@ def baseline_fingerprint(baseline: BaselineBundle) -> str:
 
 def assumptions_fingerprint(assumptions: ActionAssumptions) -> str:
     return canonical_hash(ser.assumptions_to_dict(assumptions))
-
-
-# ---------------------------------------------------------------------------
-# P1 uncertainty hook (RISK_AND_BENCHMARK_SPEC.md §1). Sampling itself belongs to WS3.
-# ---------------------------------------------------------------------------
-
-_REPLACED_EFFECTIVENESS = {
-    "renewable_energy": "renewable_effectiveness",
-    "ev_adoption": "ev_effectiveness",
-    "travel_reduction": "travel_effectiveness",
-}
-_SCALED_EFFECTIVENESS = {
-    "building_efficiency": "building_max_reduction",
-    "cloud_efficiency": "cloud_max_reduction",
-    "supplier_transition": "supplier_max_reduction",
-}
-
-
-def _require_nonnegative(field: str, value: float) -> float:
-    number = val.require_finite(field, value)
-    if number < 0.0:
-        raise ContractValidationError(field, "must be >= 0")
-    return number
-
-
-def _multipliers(field: str, values: Mapping[str, float] | None, check: Callable[[str, float], float]) -> dict[str, float]:
-    if values is None:
-        return {}
-    if not isinstance(values, Mapping):
-        raise ContractValidationError(field, "must be a mapping keyed by action name")
-    unknown = sorted(set(values) - set(ACTION_NAMES))
-    if unknown:
-        raise ContractValidationError(field, f"unknown action names {unknown}")
-    return {name: check(f"{field}.{name}", value) for name, value in values.items()}
-
-
-def apply_uncertainty_sample(
-    assumptions: ActionAssumptions,
-    *,
-    sample_id: str,
-    effectiveness_multipliers: Mapping[str, float] | None = None,
-    capex_multipliers: Mapping[str, float] | None = None,
-    opex_multipliers: Mapping[str, float] | None = None,
-) -> ActionAssumptions:
-    """Return an immutable sampled copy of ``assumptions`` for one Monte Carlo trial.
-
-    Mapping (RISK_AND_BENCHMARK_SPEC.md §1): renewable/EV/travel multipliers *replace*
-    their effectiveness; building/cloud/supplier multipliers scale their maximum-reduction
-    coefficients, and the supplier multiplier also scales supplier savings. Capex/opex
-    multipliers scale the per-action cost coefficients, so ineffective investments still
-    cost money. Missing actions keep their deterministic values. ``sample_id`` becomes the
-    copy's ``assumptions_id`` and must differ from the parent's, so sampled parameters never
-    share a deterministic strategy identity. The deterministic accounting is unchanged.
-    """
-    val.validate_assumptions(assumptions)
-    sample_id = val.require_nonempty_str("sample_id", sample_id)
-    if sample_id == assumptions.assumptions_id:
-        raise ContractValidationError("sample_id", "must differ from the parent assumptions_id")
-    effectiveness = _multipliers("effectiveness_multipliers", effectiveness_multipliers, val.require_ratio)
-    capex = _multipliers("capex_multipliers", capex_multipliers, _require_nonnegative)
-    opex = _multipliers("opex_multipliers", opex_multipliers, _require_nonnegative)
-
-    updates: dict[str, float] = {}
-    for name, multiplier in effectiveness.items():
-        if name in _REPLACED_EFFECTIVENESS:
-            updates[_REPLACED_EFFECTIVENESS[name]] = multiplier
-        else:
-            field = _SCALED_EFFECTIVENESS[name]
-            updates[field] = getattr(assumptions, field) * multiplier
-        if name == "supplier_transition":
-            updates["supplier_monthly_savings_at_full_gbp"] = assumptions.supplier_monthly_savings_at_full_gbp * multiplier
-    costs = {
-        name: ActionCost(
-            capex_at_full_gbp=assumptions.costs[name].capex_at_full_gbp * capex.get(name, 1.0),
-            monthly_opex_at_full_gbp=assumptions.costs[name].monthly_opex_at_full_gbp * opex.get(name, 1.0),
-            asset_life_months=assumptions.costs[name].asset_life_months,
-        )
-        for name in ACTION_NAMES
-    }
-    sampled = dataclasses.replace(assumptions, assumptions_id=sample_id, costs=costs, **updates)
-    return val.validate_assumptions(sampled)

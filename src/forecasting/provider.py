@@ -1,4 +1,4 @@
-"""WS1 forecast provider discovered by src.integration.real_providers.
+"""WS1 forecast provider (bound by src/integration/services.py).
 
 `create_forecast_provider()` binds the configured company CSV (via the explicit
 import adapter) to WS1's pipeline. `info.version` is the WS1 model identity, so

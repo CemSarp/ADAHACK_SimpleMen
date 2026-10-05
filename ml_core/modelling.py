@@ -41,9 +41,7 @@ from __future__ import annotations
 import json
 import logging
 import math
-import sys
 import time
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -52,10 +50,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
-
-ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
 
 from synthetic_data_generation.synthetic_data_generator import (
     GeneratorConfig,

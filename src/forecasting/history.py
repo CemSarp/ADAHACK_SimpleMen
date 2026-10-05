@@ -22,7 +22,6 @@ from src.contracts.errors import ContractValidationError
 from src.contracts.types import HISTORY_COLUMNS, HISTORY_INT_COLUMNS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SHARE_COLUMNS = ("renewable_energy_share", "ev_share")
 
 
 @dataclass(frozen=True)

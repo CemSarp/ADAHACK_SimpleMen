@@ -121,7 +121,7 @@ def main() -> None:
 
     try:
         services = _services()
-    except (CarbonOptError, OSError, ValueError):
+    except (CarbonOptError, ImportError, OSError, ValueError):
         logger.exception("Cannot initialize company analysis services")
         st.error("Company analysis could not be loaded. Please contact the application administrator.", icon="🛑")
         st.stop()
@@ -158,11 +158,11 @@ def main() -> None:
             state.run_optimize(request, services)
 
     render_grounding_panel()
-    components.company_context(state, dark)
+    components.company_context(state)
     if state.baseline is not None:
         with st.container(border=True):
-            components.optimization_panel(state, services, request, dark)
-            components.selected_strategy_panel(state, services, request)
+            components.optimization_panel(state, dark)
+            components.selected_strategy_panel(state)
         with st.container(border=True):
             components.whatif_panel(state, services, request)
         with st.container(border=True):

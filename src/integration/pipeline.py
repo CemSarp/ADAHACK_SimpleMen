@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-import pandas as pd
-
 from src.contracts import validation as val
 from src.contracts.errors import ContractValidationError, ProviderError
 from src.contracts.identity import config_from_row
@@ -29,11 +27,10 @@ from src.contracts.types import (
     RecommendationResult,
     RiskResult,
 )
+from src.optimization.recommendation import risk_pool_from_frontier
 
 from .cache_keys import analysis_key
 from .services import Services
-
-RISK_POOL_MAX = 20
 
 
 def load_baseline(request: AnalysisRequest, *, services: Services) -> tuple[BaselineBundle, BacktestReport | None, list[str]]:
@@ -53,18 +50,6 @@ def load_baseline(request: AnalysisRequest, *, services: Services) -> tuple[Base
     return baseline, backtest, warnings
 
 
-def select_risk_pool(pareto: pd.DataFrame, max_size: int = RISK_POOL_MAX) -> list[str]:
-    """Bounded risk selection pool (RISK_AND_BENCHMARK_SPEC.md section 2).
-
-    Delegates to WS2's single rule (both emission endpoints plus evenly spaced points by
-    emissions order, at most ``max_size``), so the strategies sent to Monte Carlo are
-    exactly the ones the recommendation policy ranks. Pure and pymoo-free.
-    """
-    from src.optimization.recommendation import risk_pool_from_frontier
-
-    return list(risk_pool_from_frontier(pareto, max_size=max_size))
-
-
 def _evaluate_risk(
     request: AnalysisRequest, services: Services, baseline: BaselineBundle, optimization: OptimizationResult, warnings: list[str]
 ) -> dict[str, RiskResult]:
@@ -77,7 +62,7 @@ def _evaluate_risk(
         return {}
     results: dict[str, RiskResult] = {}
     failures: dict[str, list[str]] = {}
-    pool = select_risk_pool(optimization.pareto)
+    pool = risk_pool_from_frontier(optimization.pareto)
     pareto_rows = optimization.pareto.set_index("strategy_id")
     for sid in pool:
         try:
@@ -176,7 +161,7 @@ def run_analysis_for_baseline(
         schema_version=SCHEMA_VERSION,
         run_id=f"analysis-{key[:16]}",
         provenance=Provenance(
-            provider=f"pipeline:{services.mode}",
+            provider="pipeline",
             is_mock=any(info.is_mock for info in providers.values()),
             seed=request.optimizer_config.seed,
             input_hash=key,

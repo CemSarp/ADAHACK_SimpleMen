@@ -15,19 +15,18 @@ os.environ.setdefault("CARBONOPT_CONFIG", "tests/fixtures/integration/integratio
 import pytest
 
 from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig
-from src.integration.services import create_services
-from tests.mocks import fixtures
+from tests.mocks import fixtures, make_services
 
 
 @pytest.fixture
 def mock_services():
-    return create_services(mode="mock")
+    return make_services()
 
 
 @pytest.fixture
 def fixture_services():
     """Strict shape stubs for every P0 slot."""
-    return create_services(mode="mock", provider_overrides={"simulator": "fixture", "optimizer": "fixture"})
+    return make_services({"simulator": "fixture", "optimizer": "fixture"})
 
 
 @pytest.fixture

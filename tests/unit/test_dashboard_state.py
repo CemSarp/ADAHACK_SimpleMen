@@ -17,7 +17,7 @@ from src.dashboard.state import (
     DashboardState,
     slider_key,
 )
-from src.integration.services import create_services
+from tests.mocks import make_services
 from tests.mocks.behavioral import BehavioralMockOptimizer, BehavioralMockSimulator
 from tests.mocks.fixture_providers import FixtureForecastProvider
 
@@ -65,7 +65,7 @@ def spies():
 @pytest.fixture
 def services(spies):
     forecast, simulator, optimizer = spies
-    return create_services(mode="mock", provider_overrides={"forecast": forecast, "simulator": simulator, "optimizer": optimizer})
+    return make_services({"forecast": forecast, "simulator": simulator, "optimizer": optimizer})
 
 
 @pytest.fixture
@@ -139,7 +139,7 @@ def test_horizon_or_provider_change_resets_baseline_and_whatif(state, services, 
     state.load_whatif(state.selected_strategy().config)
     state.ensure_whatif(services)
     assert state.sync_services(services) is False  # same provider identities: keep everything
-    other_services = create_services(mode="mock", provider_overrides={"simulator": "fixture"})
+    other_services = make_services({"simulator": "fixture"})
     assert state.sync_services(other_services) is True
     assert state.baseline is None and state.analysis is None and state.whatif_result is None
     assert state.whatif_config == ActionConfig.noop()
@@ -237,7 +237,7 @@ class FailingForecast(FixtureForecastProvider):
 
 
 def test_provider_error_state_is_typed_and_not_replaced(request_ok):
-    services = create_services(mode="mock", provider_overrides={"optimizer": FailingOptimizer()})
+    services = make_services({"optimizer": FailingOptimizer()})
     st = DashboardState({})
     st.sync_services(services)
     st.run_optimize(request_ok, services)
@@ -246,7 +246,7 @@ def test_provider_error_state_is_typed_and_not_replaced(request_ok):
 
 
 def test_forecast_failure_surfaces_as_baseline_error(request_ok):
-    services = create_services(mode="mock", provider_overrides={"forecast": FailingForecast()})
+    services = make_services({"forecast": FailingForecast()})
     st = DashboardState({})
     st.sync_services(services)
     assert st.ensure_baseline(request_ok, services) is None
@@ -273,7 +273,7 @@ def test_transient_forecast_failure_can_retry(request_ok, monkeypatch):
         return original(**kwargs)
 
     monkeypatch.setattr(forecast, "get_baseline", fail_once)
-    services = create_services(mode="mock", provider_overrides={"forecast": forecast})
+    services = make_services({"forecast": forecast})
     state = DashboardState({})
     state.sync_services(services)
     assert state.ensure_baseline(request_ok, services) is None

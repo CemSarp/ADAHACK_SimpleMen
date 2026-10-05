@@ -13,11 +13,12 @@ import os
 
 import pytest
 
-from src.integration import create_services, run_analysis
+from src.integration import run_analysis
 from src.llm.assistant import TurnRecord, run_turn
 from src.llm.config import ChatbotConfig
 from src.llm.context import AnalysisContext
 from src.llm.providers import create_chat_provider
+from tests.mocks import make_services
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_OLLAMA_LIVE_SMOKE") != "1" or not os.environ.get("OLLAMA_BASE_URL"),
@@ -25,12 +26,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_live_connection_and_tool_call(request_ok):
-    config = ChatbotConfig.from_env({**os.environ, "CHATBOT_PROVIDER": "ollama"})
-    provider = create_chat_provider(config)
-    status = provider.check_connection()
-    assert status.ok, status.detail
-    services = create_services(mode="mock")
+def test_live_tool_call(request_ok):
+    provider = create_chat_provider(ChatbotConfig.from_env({**os.environ, "CHATBOT_PROVIDER": "ollama"}))
+    services = make_services()
     analysis = run_analysis(request_ok, services=services)
     ctx = AnalysisContext(services, request_ok, analysis.baseline, analysis, None)
     out = run_turn(provider=provider, history=[], user_text="Show the baseline forecast.", context=ctx, record=TurnRecord())

@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from . import trainer
-from .theme import ACCENT, BG, GREEN, GRID, INK, MUTED, PANEL, BODY_FONT, HEAD_FONT
+from .theme import ACCENT, BG, BODY_FONT, GREEN, GRID, INK, MUTED, PANEL
 
 TREE_MODELS = ("XGBoost", "LightGBM", "RandomForest")
 HORIZONS = {"ALL MONTHS": None, "MONTH 1": 1, "MONTH 2": 2, "MONTH 3": 3}

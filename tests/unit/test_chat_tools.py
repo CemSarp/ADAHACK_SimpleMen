@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
-from src.contracts.types import ActionConfig, ConstraintConfig
-from src.integration import create_services, run_analysis
+from src.contracts.types import ActionConfig
+from src.integration import run_analysis
 from src.llm.context import AnalysisContext
 from src.llm.tools import (
     ALLOWED_TOOLS,
@@ -18,6 +18,7 @@ from src.llm.tools import (
     execute_tool,
     validate_arguments,
 )
+from tests.mocks import make_services
 from tests.mocks.behavioral import BehavioralMockOptimizer
 
 
@@ -172,7 +173,7 @@ def test_optimize_matches_direct_service_call_and_bounds_evaluations(mock_servic
             seen["max"] = kw["config"].max_evaluations
             return super().optimize(baseline, constraints, **kw)
 
-    services = create_services(mode="mock", provider_overrides={"optimizer": Spy()})
+    services = make_services({"optimizer": Spy()})
     big = replace(request_ok, optimizer_config=replace(request_ok.optimizer_config, max_evaluations=9000))
     c = AnalysisContext(services, big, analysis.baseline, None, None)
     r = run(c, "optimize_strategies", {})
@@ -208,7 +209,7 @@ def test_get_baseline_reports_serialized_totals(ctx):
 
 
 def test_risk_unavailable_when_no_provider(request_ok, analysis):
-    services = create_services(mode="mock", provider_overrides={"risk": "disabled"})
+    services = make_services({"risk": "disabled"})
     c = AnalysisContext(services, request_ok, analysis.baseline, analysis, None)
     r = run(c, "get_risk_summary", {})
     assert r.status == "unavailable" and "disabled by configuration" in r.error
@@ -217,7 +218,7 @@ def test_risk_unavailable_when_no_provider(request_ok, analysis):
 def test_risk_requires_a_known_strategy_and_bounds_trials(ctx, mock_services):
     r = run(ctx, "get_risk_summary", {"strategy_id": "strategy-unknown"})
     assert r.status == "error" and "not part of the current analysis" in r.error
-    fixture = create_services(mode="mock", provider_overrides={"simulator": "fixture", "optimizer": "fixture"})
+    fixture = make_services({"simulator": "fixture", "optimizer": "fixture"})
     req = replace(ctx.request, risk_config=replace(ctx.request.risk_config, n_simulations=5000))
     a = run_analysis(req, services=fixture)
     c = AnalysisContext(fixture, req, a.baseline, a, a.optimization.strategies["strategy-8be15857fffc57f6"])

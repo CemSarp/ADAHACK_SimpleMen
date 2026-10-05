@@ -23,7 +23,6 @@ from .presentation import (
     period_label,
     resulting_share,
     tonnes,
-    trailing_window,
 )
 from .state import (
     COMPUTING,
@@ -79,61 +78,19 @@ def kpi_row(items: list[dict[str, Any]]) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Company context, baseline, backtest
+# Company context
 # --------------------------------------------------------------------------- #
 
 
-def company_context(state: DashboardState, dark: bool) -> None:
+def company_context(state: DashboardState) -> None:
     if state.baseline is not None and state.baseline.data_kind == "synthetic":
         st.caption("Synthetic data · results use illustrative company data and action assumptions.")
     eda.feature_explorer()
     trainer.model_trainer()
     explain.shap_explorer()
-    baseline = state.baseline
-    if baseline is None:
-        if state.baseline_error:
-            e = state.baseline_error
-            error_box(e.kind, e.error_type, e.message)
-        return
-
-
-def backtest_panel(state: DashboardState, dark: bool) -> None:
-    report = state.backtest
-    st.subheader("Forecast accuracy")
-    st.caption("Compare predictions with held-out history to judge how reliable the forecast is.")
-    if report is None:
-        st.info("Historical forecast evaluation is currently unavailable.", icon="ℹ️")
-        return
-    rows = []
-    for target, m in report.aggregate_metrics.items():
-        beats = m["mae"] < m["naive_mae"]
-        rows.append({
-            "Target": charts.TARGET_LABELS.get(target, target),
-            "Selected model": report.selected_models.get(target, report.model_family),
-            "MAE": m["mae"], "RMSE": m["rmse"], "R²": m.get("r2"),
-            "Seasonal-naive MAE": m["naive_mae"], "Seasonal-naive RMSE": m["naive_rmse"],
-            "Beats naive (MAE)": "Yes" if beats else "No",
-        })
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", column_config={
-        "MAE": st.column_config.NumberColumn(format="%.2f"), "RMSE": st.column_config.NumberColumn(format="%.2f"),
-        "R²": st.column_config.NumberColumn(format="%.3f"),
-        "Seasonal-naive MAE": st.column_config.NumberColumn(format="%.2f"),
-        "Seasonal-naive RMSE": st.column_config.NumberColumn(format="%.2f"),
-    })
-    n_folds = report.folds["fold_id"].nunique()
-    horizons = (f" and horizons 1–{int(report.oof_predictions['horizon'].max())}"
-                if "horizon" in report.oof_predictions.columns and len(report.oof_predictions) else "")
-    st.caption(f"Evaluation covers {n_folds} historical forecast dates{horizons}. "
-               "MAE is the average absolute error; RMSE gives more weight to large errors. "
-               "Lower errors are better; R² closer to 1 indicates a better fit. "
-               "The seasonal reference repeats the same month from the previous year. "
-               "Error units are tonnes of CO₂e or pounds per month."
-               + (" The chart shows predictions one month ahead." if horizons else ""))
-    targets = [t for t in report.aggregate_metrics]
-    tabs = st.tabs([charts.TARGET_LABELS.get(t, t) for t in targets])
-    for tab, target in zip(tabs, targets):
-        with tab:
-            st.plotly_chart(charts.backtest_predictions(report, target, dark=dark), width="stretch")
+    if state.baseline is None and state.baseline_error:
+        e = state.baseline_error
+        error_box(e.kind, e.error_type, e.message)
 
 
 # --------------------------------------------------------------------------- #
@@ -200,7 +157,7 @@ def recommendation_text(rec: Any) -> str:
     return text
 
 
-def optimization_panel(state: DashboardState, services: Services, request: AnalysisRequest, dark: bool) -> None:
+def optimization_panel(state: DashboardState, dark: bool) -> None:
     analysis = state.analysis
     st.subheader("Optimized strategies")
     st.caption("Compare action mixes that meet your goals. The frontier shows the best available trade-offs between emissions and profit.")
@@ -285,7 +242,7 @@ def optimization_panel(state: DashboardState, services: Services, request: Analy
     st.caption("★ " + recommendation_text(rec))
 
 
-def strategy_kpis(result: SimulationResult, *, title: str, services: Services, request: AnalysisRequest) -> None:
+def strategy_kpis(result: SimulationResult, *, title: str) -> None:
     m = result.metrics
     st.markdown(f"**{title}**")
     kpi_row([
@@ -303,13 +260,13 @@ def strategy_kpis(result: SimulationResult, *, title: str, services: Services, r
     ])
 
 
-def selected_strategy_panel(state: DashboardState, services: Services, request: AnalysisRequest) -> None:
+def selected_strategy_panel(state: DashboardState) -> None:
     selected = state.selected_strategy()
     if selected is None:
         return
     st.subheader("Selected strategy")
     st.caption("Review this plan's emissions, profit and implementation cost against the baseline.")
-    strategy_kpis(selected, title=_strategy_name(selected.strategy_id, state.analysis), services=services, request=request)
+    strategy_kpis(selected, title=_strategy_name(selected.strategy_id, state.analysis))
     cfg = selected.config
     st.caption("Actions (% of remaining opportunity): " + " · ".join(
         f"{ACTION_LABELS[n]} {pct(getattr(cfg, n))}" for n in ACTION_NAMES))
@@ -357,7 +314,7 @@ def whatif_panel(state: DashboardState, services: Services, request: AnalysisReq
         return
     if result is None:
         return
-    strategy_kpis(result, title="What-if result", services=services, request=request)
+    strategy_kpis(result, title="What-if result")
     check = state.whatif_constraint_check(services, request)
     if check is not None:
         if check.feasible:

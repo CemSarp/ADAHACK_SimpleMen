@@ -16,16 +16,14 @@ import pytest
 
 from src.actions import (
     ACTION_DEFINITIONS,
-    apply_uncertainty_sample,
     compute_action_breakdown,
-    compute_strategy_id,
     config_from_vector,
     config_to_vector,
     load_action_assumptions,
     simulate_strategy,
-    strategy_identity,
 )
-from src.actions.definitions import assign_strategy_id, canonical_config, strategy_id_from_identity
+from src.actions.definitions import assign_strategy_id, canonical_config
+from src.contracts import identity
 from src.contracts import ACTION_NAMES, ActionConfig, ContractValidationError
 from src.contracts import serialization as ser
 from src.contracts import validation as val
@@ -48,6 +46,10 @@ COST_COLUMNS = [
     "budget_cost_gbp",
     "net_cash_impact_gbp",
 ]
+
+
+def _sid(baseline_id, config, assumptions):
+    return identity.compute_strategy_id(baseline_id, config, assumptions.assumptions_id, assumptions.version)
 
 
 def only(**actions: float) -> ActionConfig:
@@ -105,7 +107,7 @@ def test_negative_zero_and_numpy_scalars_are_normalised():
     assert math.copysign(1.0, config.renewable_energy) == 1.0
     assert all(type(v) is float for v in config.as_vector())
     assert config.as_vector() == (0.0, 0.5, 0.25, 1.0, 0.0, 1.0)
-    assert compute_strategy_id("b", ActionConfig(-0.0, 0, 0, 0, 0, 0), fixture_assumptions()) == compute_strategy_id(
+    assert _sid("b", ActionConfig(-0.0, 0, 0, 0, 0, 0), fixture_assumptions()) == _sid(
         "b", ActionConfig.noop(), fixture_assumptions()
     )
 
@@ -492,13 +494,13 @@ def test_zero_emission_baseline_has_null_ratio_and_ev_can_add_emissions(assumpti
 
 
 def test_fixture_strategy_ids_are_reproduced(baseline, assumptions, example_config):
-    assert compute_strategy_id(baseline.baseline_id, ActionConfig.noop(), assumptions) == "strategy-84d0730a93b9d729"
-    assert compute_strategy_id(baseline.baseline_id, example_config, assumptions) == "strategy-8be15857fffc57f6"
+    assert _sid(baseline.baseline_id, ActionConfig.noop(), assumptions) == "strategy-84d0730a93b9d729"
+    assert _sid(baseline.baseline_id, example_config, assumptions) == "strategy-8be15857fffc57f6"
 
 
 def test_identity_is_sorted_compact_json_of_full_precision_values(example_config):
-    identity = strategy_identity("baseline-demo-v1", example_config, assumptions_id="demo-actions-v1", assumptions_version="1.0.0")
-    assert identity == (
+    payload = identity.strategy_identity_payload("baseline-demo-v1", example_config, "demo-actions-v1", "1.0.0")
+    assert payload == (
         '{"assumptions_id":"demo-actions-v1","assumptions_version":"1.0.0","baseline_id":"baseline-demo-v1",'
         '"config":{"building_efficiency":0.2,"cloud_efficiency":0.25,"ev_adoption":0.4,"renewable_energy":0.7,'
         '"supplier_transition":0.1,"travel_reduction":0.3}}'
@@ -509,16 +511,16 @@ def test_identity_never_rounds_and_tracks_baseline_and_assumption_version(assump
     a = ActionConfig(0.1 + 0.2, 0, 0, 0, 0, 0)
     b = ActionConfig(0.3, 0, 0, 0, 0, 0)
     assert a != b
-    assert compute_strategy_id("base", a, assumptions) != compute_strategy_id("base", b, assumptions)
-    reference = compute_strategy_id("base", b, assumptions)
-    assert compute_strategy_id("other-base", b, assumptions) != reference
-    assert compute_strategy_id("base", b, dataclasses.replace(assumptions, version="1.0.1")) != reference
-    assert compute_strategy_id("base", b, dataclasses.replace(assumptions, assumptions_id="x")) != reference
+    assert _sid("base", a, assumptions) != _sid("base", b, assumptions)
+    reference = _sid("base", b, assumptions)
+    assert _sid("other-base", b, assumptions) != reference
+    assert _sid("base", b, dataclasses.replace(assumptions, version="1.0.1")) != reference
+    assert _sid("base", b, dataclasses.replace(assumptions, assumptions_id="x")) != reference
 
 
 def test_truncated_id_collision_is_extended_by_full_identity_comparison():
-    def colliding(identity, *, hex_length):
-        return "strategy-" + "a" * 16 if hex_length == 16 else strategy_id_from_identity(identity, hex_length=hex_length)
+    def colliding(text, *, hex_length):
+        return "strategy-" + "a" * 16 if hex_length == 16 else identity.strategy_id_from_identity(text, hex_length=hex_length)
 
     taken = {"strategy-" + "a" * 16: '{"existing":1}'}
     assert assign_strategy_id('{"existing":1}', taken, id_fn=colliding) == "strategy-" + "a" * 16
@@ -587,48 +589,3 @@ def test_breakdown_matches_golden_intermediates_and_reconciles(baseline, assumpt
     assert breakdown["existing_scope2_tco2e"] + breakdown["ev_scope2_tco2e"] == close(row["scope2_tco2e"])
     scope3 = breakdown[["travel_tco2e", "cloud_tco2e", "supplier_tco2e", "other_tco2e"]].sum()
     assert scope3 == close(row["scope3_tco2e"])
-
-
-def test_unit_uncertainty_sample_reproduces_deterministic_outcomes(baseline, assumptions, example_config):
-    ones = dict.fromkeys(ACTION_NAMES, 1.0)
-    sampled = apply_uncertainty_sample(
-        assumptions, sample_id="demo-actions-v1/trial-0", effectiveness_multipliers=ones, capex_multipliers=ones, opex_multipliers=ones
-    )
-    deterministic = simulate_strategy(baseline, example_config, assumptions=assumptions)
-    trial = simulate_strategy(baseline, example_config, assumptions=sampled)
-    assert frames_identical(trial.monthly, deterministic.monthly) and trial.metrics == deterministic.metrics
-    assert trial.strategy_id != deterministic.strategy_id  # sampled parameters never share an identity
-
-
-def test_uncertainty_sample_follows_the_documented_mapping(assumptions):
-    sampled = apply_uncertainty_sample(
-        assumptions,
-        sample_id="trial-1",
-        effectiveness_multipliers={"renewable_energy": 0.9, "building_efficiency": 0.9, "supplier_transition": 0.85},
-        capex_multipliers={"renewable_energy": 1.1},
-        opex_multipliers={"cloud_efficiency": 0.9},
-    )
-    assert sampled.renewable_effectiveness == 0.9  # replaced
-    assert sampled.building_max_reduction == close(0.27)  # 0.3 * 0.9 scaled
-    assert sampled.supplier_max_reduction == close(0.255)
-    assert sampled.supplier_monthly_savings_at_full_gbp == close(850.0)
-    assert sampled.costs["renewable_energy"].capex_at_full_gbp == close(110_000.0)
-    assert sampled.costs["cloud_efficiency"].monthly_opex_at_full_gbp == close(18.0)
-    assert sampled.costs["ev_adoption"] == assumptions.costs["ev_adoption"]
-    assert sampled.assumptions_id == "trial-1" and sampled.version == assumptions.version
-    assert assumptions == fixture_assumptions()  # parent unchanged
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"sample_id": "demo-actions-v1"},
-        {"sample_id": "t", "effectiveness_multipliers": {"heat_pumps": 0.9}},
-        {"sample_id": "t", "effectiveness_multipliers": {"renewable_energy": 1.1}},
-        {"sample_id": "t", "capex_multipliers": {"ev_adoption": -0.1}},
-        {"sample_id": ""},
-    ],
-)
-def test_invalid_uncertainty_samples_are_rejected(assumptions, kwargs):
-    with pytest.raises(ContractValidationError):
-        apply_uncertainty_sample(assumptions, **kwargs)

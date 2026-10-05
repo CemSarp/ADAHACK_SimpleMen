@@ -21,7 +21,6 @@ from plotly.subplots import make_subplots
 from .theme import ACCENT, BG, BODY_FONT, GREEN, GRID, INK, MUTED
 
 from src.contracts.types import (
-    BacktestReport,
     BaselineBundle,
     BenchmarkResult,
     ExplanationResult,
@@ -82,52 +81,6 @@ def _layout(fig: go.Figure, t: Theme, *, height: int, x_title: str | None = None
     if y_title:
         fig.update_yaxes(title_text=y_title)
     return fig
-
-
-# --------------------------------------------------------------------------- #
-# History + baseline forecast
-# --------------------------------------------------------------------------- #
-
-
-def history_and_baseline(history: pd.DataFrame | None, baseline: BaselineBundle, target: str, *, dark: bool = False) -> go.Figure:
-    t = theme_for(dark)
-    fig = go.Figure()
-    if history is not None and len(history):
-        fig.add_trace(go.Scatter(
-            x=history["timestamp"], y=history[target], name="History", mode="lines",
-            line=dict(color=t.actual, width=2),
-        ))
-    fig.add_trace(go.Scatter(
-        x=baseline.monthly["timestamp"], y=baseline.monthly[target], name="Baseline forecast", mode="lines",
-        line=dict(color=t.baseline, width=2, dash="dot"),
-    ))
-    start = baseline.monthly["timestamp"].iloc[0]
-    fig.add_vline(x=start, line=dict(color=t.axis, width=1))
-    fig.add_annotation(x=start, y=1, yref="paper", text="Forecast starts", showarrow=False, xanchor="left",
-                       font=dict(color=t.muted, size=11))
-    return _layout(fig, t, height=300, y_title=TARGET_LABELS[target])
-
-
-# --------------------------------------------------------------------------- #
-# Backtest
-# --------------------------------------------------------------------------- #
-
-
-def backtest_predictions(report: BacktestReport, target: str, *, dark: bool = False) -> go.Figure:
-    t = theme_for(dark)
-    oof = report.oof_predictions[report.oof_predictions["target"] == target]
-    if "horizon" in oof.columns:  # multi-horizon walk-forward: plot the 1-month-ahead path (presentation only)
-        oof = oof[oof["horizon"] == 1]
-    oof = oof.sort_values("timestamp")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=oof["timestamp"], y=oof["actual"], name="Actual", mode="lines", line=dict(color=t.actual, width=2)))
-    fig.add_trace(go.Scatter(x=oof["timestamp"], y=oof["predicted"], name="Model (out-of-fold)", mode="lines",
-                             line=dict(color=t.selected, width=2)))
-    fig.add_trace(go.Scatter(x=oof["timestamp"], y=oof["naive_predicted"], name="Seasonal naive", mode="lines",
-                             line=dict(color=t.baseline, width=2, dash="dot")))
-    for _, fold in report.folds[report.folds["target"] == target].iterrows():
-        fig.add_vline(x=fold["test_start"], line=dict(color=t.grid, width=1))
-    return _layout(fig, t, height=280, y_title=TARGET_LABELS[target])
 
 
 # --------------------------------------------------------------------------- #

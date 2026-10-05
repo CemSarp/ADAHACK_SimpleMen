@@ -18,7 +18,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from src.actions.definitions import compute_strategy_id
+from src.contracts.identity import compute_strategy_id
 from src.contracts.types import (
     SCHEMA_VERSION,
     ActionAssumptions,
@@ -82,7 +82,7 @@ def affine_simulator(baseline: BaselineBundle, config: ActionConfig, *, assumpti
         "total_operating_savings_gbp": 0.0,
         "net_cash_impact_gbp": -cost,
     }
-    strategy_id = compute_strategy_id(baseline.baseline_id, config, assumptions)
+    strategy_id = compute_strategy_id(baseline.baseline_id, config, assumptions.assumptions_id, assumptions.version)
     return SimulationResult(
         schema_version=SCHEMA_VERSION,
         run_id=f"affine-{strategy_id}",

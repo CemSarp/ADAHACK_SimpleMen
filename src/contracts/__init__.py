@@ -8,7 +8,6 @@ from .errors import (
     CapabilityUnavailable,
     CarbonOptError,
     ContractValidationError,
-    ForecastConfigurationError,
     ForecastError,
     OptimizationError,
     ProviderConfigurationError,
@@ -23,7 +22,6 @@ from .protocols import (
     BenchmarkProvider,
     ExplanationProvider,
     ForecastProvider,
-    NarrativeProvider,
     OptimizerProvider,
     RiskProvider,
     SimulationFn,
@@ -51,7 +49,6 @@ from .types import (
     RecommendationResult,
     RiskConfig,
     RiskResult,
-    NarrativeResult,
     SimulationResult,
     ToolResult,
 )

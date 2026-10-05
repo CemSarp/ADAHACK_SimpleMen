@@ -52,15 +52,8 @@ class ChatState:
     def messages(self) -> list[dict[str, Any]]:
         return self._get("messages", [])
 
-    @property
-    def connection(self) -> dict[str, Any] | None:
-        return self._get("connection")
-
-    def set_connection(self, ok: bool, detail: str) -> None:
-        self._set("connection", {"ok": ok, "detail": detail})
-
     def clear(self) -> None:
-        for name in ("messages", "turns", "counter", "connection"):
+        for name in ("messages", "turns", "counter"):
             self.store.pop(PREFIX + name, None)
 
     def _next_id(self) -> int:

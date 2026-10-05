@@ -20,12 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.actions.definitions import (
-    assumptions_fingerprint,
-    baseline_fingerprint,
-    canonical_config,
-    compute_strategy_id,
-)
+from src.actions.definitions import assumptions_fingerprint, baseline_fingerprint, canonical_config
 from src.contracts import (
     ACTION_NAMES,
     SCHEMA_VERSION,
@@ -37,7 +32,7 @@ from src.contracts import (
     SimulationResult,
 )
 from src.contracts import validation as val
-from src.contracts.identity import canonical_hash
+from src.contracts.identity import canonical_hash, compute_strategy_id
 
 __version__ = "ws2-engine-1.1.0"  # bump whenever outputs for the same inputs can change
 PROVIDER = "action-engine"
@@ -316,7 +311,7 @@ def simulate_strategy(
             assumptions_id=assumptions.assumptions_id,
         ),
         baseline_id=baseline.baseline_id,
-        strategy_id=compute_strategy_id(baseline.baseline_id, config, assumptions),
+        strategy_id=compute_strategy_id(baseline.baseline_id, config, assumptions.assumptions_id, assumptions.version),
         config=config,
         monthly=monthly,
         metrics=metrics,

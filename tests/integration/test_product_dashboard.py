@@ -40,7 +40,7 @@ def test_default_and_legacy_launches_use_the_configured_company(monkeypatch, leg
 
 def test_factory_defaults_to_domain_services():
     services = create_services()
-    assert services.mode == "real" and not services.is_mock
+    assert not services.is_mock
     assert services.assumptions.assumptions_id == "supply-chain-actions-v1"
     assert services.capabilities.risk_available and services.capabilities.benchmark_available
 

@@ -30,17 +30,12 @@ def strategy_identity_payload(
     return json.dumps(identity, sort_keys=True, separators=(",", ":"))
 
 
-def compute_strategy_id(
-    baseline_id: str,
-    config: ActionConfig,
-    assumptions_id: str,
-    assumptions_version: str,
-    *,
-    hex_length: int = STRATEGY_ID_HEX_LENGTH,
-) -> str:
-    payload = strategy_identity_payload(baseline_id, config, assumptions_id, assumptions_version)
-    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
-    return STRATEGY_ID_PREFIX + digest[:hex_length]
+def strategy_id_from_identity(identity: str, *, hex_length: int = STRATEGY_ID_HEX_LENGTH) -> str:
+    return STRATEGY_ID_PREFIX + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:hex_length]
+
+
+def compute_strategy_id(baseline_id: str, config: ActionConfig, assumptions_id: str, assumptions_version: str) -> str:
+    return strategy_id_from_identity(strategy_identity_payload(baseline_id, config, assumptions_id, assumptions_version))
 
 
 def canonical_hash(value: Any) -> str:

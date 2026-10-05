@@ -1,7 +1,7 @@
 """Public contract types, version 1.0.0.
 
 Field names, units and semantics follow docs/DATA_SCHEMAS.md and
-docs/SHARED_CONTRACTS.md (currently under carbonopt-ai-docs/). Frames refer to
+docs/SHARED_CONTRACTS.md. Frames refer to
 canonical schemas, never arbitrary columns. Result objects never compute domain
 outcomes; they only carry them.
 """
@@ -156,7 +156,6 @@ BACKTEST_OOF_COLUMNS: tuple[str, ...] = (
     "predicted",
     "naive_predicted",
 )
-BACKTEST_AGGREGATE_FIELDS: tuple[str, ...] = ("mae", "rmse", "r2", "naive_mae", "naive_rmse")
 SHAP_COLUMNS: tuple[str, ...] = (
     "timestamp",
     "target",
@@ -412,8 +411,7 @@ class BenchmarkResult:
 
 @dataclass(frozen=True, eq=False)
 class BacktestReport:
-    """Temporal evaluation. Fold field names `test_start`/`test_end` and
-    `selected_models` await WS1 review (see WS4 handoff)."""
+    """Temporal evaluation over walk-forward folds; `selected_models` names the model per target."""
 
     schema_version: str
     run_id: str
@@ -466,7 +464,6 @@ class Capabilities:
     risk_available: bool
     shap_available_targets: tuple[str, ...]
     benchmark_available: bool
-    narrative_available: bool
     scenario_compare_available: bool
     is_mock: Mapping[str, bool]
 
@@ -508,9 +505,6 @@ class AnalysisBundle:
 # Chatbot objects (additive, contract 1.x; docs/CHATBOT_IMPLEMENTATION.md)
 # --------------------------------------------------------------------------- #
 
-TOOL_STATUSES: tuple[str, ...] = ("ok", "error", "unavailable")
-
-
 @dataclass(frozen=True)
 class ToolResult:
     """Outcome of an allowlisted tool call. `data` is a plain JSON-safe mapping
@@ -522,11 +516,3 @@ class ToolResult:
     data: Mapping[str, Any] | None
     error: str | None
 
-
-@dataclass(frozen=True)
-class NarrativeResult:
-    status: str
-    text: str
-    source_run_id: str
-    provider: str
-    is_template: bool

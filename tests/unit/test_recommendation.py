@@ -18,7 +18,7 @@ from src.contracts import (
     RiskResult,
 )
 from src.contracts import serialization as ser
-from src.optimization import evaluate_what_if, optimize_strategies, recommend_strategy, select_risk_pool
+from src.optimization import evaluate_constraints, optimize_strategies, recommend_strategy, select_risk_pool
 from src.optimization.recommendation import DETERMINISTIC_POLICY, normalized_score
 from tests.support import (
     candidate_table,
@@ -163,9 +163,9 @@ def test_real_optimization_recommendation_is_deterministic_and_matches_manual_wh
     first, second = recommend_strategy(optimization), recommend_strategy(optimization)
     assert first == second and first.strategy_id in set(optimization.pareto["strategy_id"])
     stored = optimization.strategies[first.strategy_id]
-    manual = evaluate_what_if(baseline, stored.config, assumptions=assumptions, constraints=constraints)
-    assert manual.simulation.metrics == stored.metrics and frames_identical(manual.simulation.monthly, stored.monthly)
-    assert manual.constraints.feasible
+    manual = simulate_strategy(baseline, stored.config, assumptions=assumptions)
+    assert manual.metrics == stored.metrics and frames_identical(manual.monthly, stored.monthly)
+    assert evaluate_constraints(manual, constraints).feasible
 
 
 def test_recommendation_json_round_trip():

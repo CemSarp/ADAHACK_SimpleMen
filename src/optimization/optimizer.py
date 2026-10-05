@@ -32,17 +32,10 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.core.problem import Problem
 from pymoo.core.repair import Repair
 
-from src.actions.definitions import (
-    assign_strategy_id,
-    assumptions_fingerprint,
-    baseline_fingerprint,
-    config_from_vector,
-    strategy_id_from_identity,
-    strategy_identity,
-)
+from src.actions.definitions import assign_strategy_id, assumptions_fingerprint, baseline_fingerprint, config_from_vector
 from src.contracts import validation as val
 from src.contracts.errors import ContractValidationError, OptimizationError
-from src.contracts.identity import canonical_hash
+from src.contracts.identity import canonical_hash, strategy_id_from_identity, strategy_identity_payload
 from src.contracts.protocols import SimulationFn
 from src.contracts.types import (
     ACTION_NAMES,
@@ -147,11 +140,8 @@ class _Registry:
         val.validate_simulation_result(result, self.baseline)  # also checks baseline ID and dates
         if result.config.as_vector() != key:
             raise ContractValidationError("simulator.config", "simulator returned a different configuration")
-        identity = strategy_identity(
-            self.baseline.baseline_id,
-            config,
-            assumptions_id=self.assumptions.assumptions_id,
-            assumptions_version=self.assumptions.version,
+        identity = strategy_identity_payload(
+            self.baseline.baseline_id, config, self.assumptions.assumptions_id, self.assumptions.version
         )
         canonical_id = strategy_id_from_identity(identity)
         if result.strategy_id != canonical_id:

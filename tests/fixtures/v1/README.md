@@ -1,11 +1,10 @@
 # Contract fixture kit, revision v1
 
-Byte-identical copies of the synthetic examples in `carbonopt-ai-docs/examples/`, placed at the
-C0 fixture location named in `docs/TESTING_AND_MOCKS.md` §1. Only the files WS2 consumes or
-produces are copied; benchmark fixtures stay with WS3.
+Synthetic contract examples used by the tests, the mock providers and the WS2 CLI
+(`docs/TESTING_AND_MOCKS.md` §1). `risk_sample_mock_simulator.json` is a golden 1,000-trial
+Monte Carlo run over the behavioral mock simulator.
 
-`tests/contracts/test_contracts_foundation.py` fails if a copy drifts from its documentation
-source. Fixtures are immutable per revision: change numerical expectations only with
+Fixtures are immutable per revision: change numerical expectations only with
 domain-owner review, never by regenerating snapshots to silence a failing test.
 
 All payloads carry `provenance.is_mock = true`. They describe contract shapes and hand-derived

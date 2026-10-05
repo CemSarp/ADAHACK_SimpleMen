@@ -131,9 +131,3 @@ class BenchmarkProvider(Protocol):
 
     def benchmark(self, baseline: BaselineBundle) -> BenchmarkResult: ...
 
-
-@runtime_checkable
-class NarrativeProvider(Protocol):
-    """WS4 (P2, not implemented). Reserved slot so P2 needs no services rewrite."""
-
-    info: ProviderInfo

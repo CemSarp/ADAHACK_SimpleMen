@@ -1,4 +1,4 @@
-"""Shared constraint evaluation and the manual what-if boundary (docs/ACTION_MODEL.md §5).
+"""Shared constraint evaluation (docs/ACTION_MODEL.md §5).
 
 ``evaluate_constraints`` is the single implementation used by NSGA-II search, manual
 what-if and UI badges. Normalized values are dimensionless and pass the solver test when
@@ -9,19 +9,9 @@ epsilon is never permission to exceed a budget materially.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from src.contracts import validation as val
 from src.contracts.errors import ContractValidationError
-from src.contracts.protocols import SimulationFn
-from src.contracts.types import (
-    ActionAssumptions,
-    ActionConfig,
-    BaselineBundle,
-    ConstraintConfig,
-    ConstraintEvaluation,
-    SimulationResult,
-)
+from src.contracts.types import ConstraintConfig, ConstraintEvaluation, SimulationResult
 
 __version__ = "ws2-constraints-1.1.0"
 
@@ -95,34 +85,3 @@ def evaluate_constraints(result: SimulationResult, constraints: ConstraintConfig
         raw_violations=raw,
         satisfied=satisfied,
     )
-
-
-@dataclass(frozen=True, eq=False)
-class WhatIfEvaluation:
-    """Manual what-if outcome: the canonical simulation and, optionally, its constraint badges."""
-
-    simulation: SimulationResult
-    constraints: ConstraintEvaluation | None
-
-
-def evaluate_what_if(
-    baseline: BaselineBundle,
-    config: ActionConfig,
-    *,
-    assumptions: ActionAssumptions,
-    constraints: ConstraintConfig | None = None,
-    simulator: SimulationFn | None = None,
-) -> WhatIfEvaluation:
-    """Manual what-if boundary used by sliders and chat tools.
-
-    Calls the same simulator and constraint function as the optimizer, so a slider result
-    for a stored Pareto config equals the stored strategy exactly. Never reruns training
-    or optimization. ``simulator`` defaults to the canonical WS2 engine.
-    """
-    if constraints is not None:
-        val.validate_constraints(constraints)
-    if simulator is None:
-        from src.actions.engine import simulate_strategy as simulator  # canonical engine
-    simulation = simulator(baseline, config, assumptions=assumptions)
-    evaluation = None if constraints is None else evaluate_constraints(simulation, constraints)
-    return WhatIfEvaluation(simulation=simulation, constraints=evaluation)

@@ -4,32 +4,18 @@ channels:
 dependencies:
   - python=3.11
   - pip
-  # Core data handling
+  # Compiled stack from conda-forge (brings OpenMP for XGBoost/LightGBM on macOS).
   - numpy
   - pandas
-  - scipy
-  # Visualisation
   - matplotlib
-  - seaborn
   - plotly
-  # Machine learning & stats
   - scikit-learn
-  - statsmodels
   - xgboost
   - lightgbm
   - prophet
-  # Notebooks
-  - jupyterlab
-  - ipykernel
-  # Utilities
-  - requests
-  - python-dotenv
-  - tqdm
-  # Tests
   - pytest
   - pip:
-      # The locked app/test set is requirements.txt; these keep the conda route runnable.
-      # WS2 multi-objective optimization; 0.6.2+ seeds a local Generator, never the global NumPy RNG
+      # The pinned app/test set is requirements.txt; these keep the conda route runnable.
       - pymoo>=0.6.2
       - streamlit
       - shap==0.51.0

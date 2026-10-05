@@ -4,7 +4,7 @@ Goal: each developer starts independently, while integration verifies both schem
 
 ## 1. Fixture kit
 
-The package's `examples/` files are initial machine-readable shapes and synthetic numerical examples. During C0 copy/review them into `tests/fixtures/v1/`, create JSON schemas/validators, and expand fixtures where indicated.
+`tests/fixtures/v1/` holds the machine-readable contract shapes and synthetic numerical examples every test loads through the shared serializers and validators.
 
 | Fixture target | Producer / reviewer | Purpose |
 |---|---|---|
@@ -20,7 +20,7 @@ The package's `examples/` files are initial machine-readable shapes and syntheti
 | `benchmark_result.json` | WS3 / WS4 | Peer units, direction and source metadata |
 | `benchmark_peers.json` | WS3 / WS4 | Compatible illustrative peer dataset |
 
-At C0 add history CSV and short sequence fixtures; backtest report; SHAP explanation; invalid schema cases; unavailable benchmark; two-strategy risk selection pool; zero-uncertainty case. These are explicitly implementation tasks, not files claimed to be delivered here.
+The kit also covers a history CSV, backtest report, SHAP explanation and a golden 1,000-trial Monte Carlo sample (`risk_sample_mock_simulator.json`).
 
 Fixtures are immutable per revision. Update numerical expectations only with domain-owner review; never regenerate snapshots just to silence a failing test.
 
@@ -49,9 +49,9 @@ Return schema-valid monthly allocation and matching totals. This is a mathematic
 
 Use a two-variable toy problem with known dominated/feasible points for solver/constraint adapter tests. Use a risk-sensitive double for uncertainty tests; a constant static response cannot prove Monte Carlo logic.
 
-### Production substitution
+### Injecting doubles
 
-All stubs and real providers implement the same public protocols and serializers. Services may replace forecast, simulator, optimizer, risk, SHAP and benchmark independently. Run contract tests parametrized over the corresponding mock and real provider.
+All doubles and real providers implement the same public protocols and serializers. `tests.mocks.make_services(overrides)` binds a mock to every slot unless a slot is given a provider instance, a variant name (`fixture`, `behavioral`), `real` or `disabled`; it calls `create_services`, which never imports test code.
 
 ### Chatbot mocks and tests
 
@@ -102,9 +102,7 @@ Infeasible optimization is a valid business result; unexpected solver failure is
 
 ## 6. CI and verification cadence
 
-C0 provides a clean offline P0 job installing the locked P0 dependencies and running contract, unit and integration suites. Optional jobs install P1/P2 requirements and run their marked tests without real network/credentials.
-
-Run boundary tests before each provider swap, full P0 suite before C4, affected tests at each P1 gate, and a final all-enabled offline demo smoke test. Measure performance on the configured fixture rather than adding brittle machine-specific timing assertions.
+CI (`.github/workflows/ci.yml`) installs `requirements.txt` and runs the contract, unit and integration suites offline. Measure performance on the configured fixture rather than adding brittle machine-specific timing assertions.
 
 PRs show test commands/results and fixture versions. Model quality thresholds are contextual; leakage safety, honest naive comparison and contract integrity are unconditional.
 

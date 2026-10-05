@@ -14,7 +14,7 @@ import pytest
 
 import src.optimization.optimizer as optimizer_module
 from src.actions import simulate_strategy
-from src.actions.definitions import strategy_id_from_identity
+from src.contracts.identity import strategy_id_from_identity
 from src.contracts import (
     ACTION_NAMES,
     ActionConfig,

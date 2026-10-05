@@ -12,10 +12,10 @@ from src.integration import run_analysis
 from src.llm.context import AnalysisContext
 from src.llm.providers import ChatConnectionError, MockChatProvider, OllamaChatProvider
 from src.llm.config import ChatbotConfig
-from src.llm.tools import tool_result_payload
 from tests.unit.test_chat_config_providers import FakeTransport
 from tests.unit.test_chat_assistant import Scripted
 from src.llm.types import ModelResponse, ToolCall
+from tests.mocks import make_services
 
 
 @pytest.fixture
@@ -52,8 +52,7 @@ def test_clear_resets_chat_only_not_the_dashboard(ctx, mock_services, request_ok
     assert chat.messages == [] and dash.analysis is not None and dash.baseline is not None
     # and a dashboard provider change does not delete the conversation
     ask(chat, "hello", MockChatProvider(), ctx)
-    dash.sync_services(__import__("src.integration", fromlist=["create_services"]).create_services(
-        mode="mock", provider_overrides={"simulator": "fixture"}))
+    dash.sync_services(make_services({"simulator": "fixture"}))
     assert len(chat.messages) == 2
 
 

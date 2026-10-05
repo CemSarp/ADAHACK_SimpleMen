@@ -1,6 +1,6 @@
 """Deterministic text summaries of tool-result payloads.
 
-Used by the mock model and by the template explanation. Every number comes
+Used by the mock model and as the fallback answer text. Every number comes
 straight from the payload; nothing is estimated or invented.
 """
 

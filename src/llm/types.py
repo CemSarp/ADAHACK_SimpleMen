@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Mapping
 
 
@@ -36,9 +36,3 @@ class ModelResponse:
     text: str
     tool_calls: tuple[ToolCall, ...] = ()
 
-
-@dataclass(frozen=True)
-class ConnectionStatus:
-    ok: bool
-    detail: str
-    models: tuple[str, ...] = field(default_factory=tuple)

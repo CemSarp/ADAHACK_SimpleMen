@@ -44,7 +44,7 @@ def _with_intensities(values):
 
 
 def _bench(dataset=None, **cfg) -> BenchmarkResult:
-    return benchmark_company(fixtures.baseline(), dataset or load_benchmark_data(source=_source(), offline=True), config=_config(**cfg))
+    return benchmark_company(fixtures.baseline(), dataset or load_benchmark_data(source=_source()), config=_config(**cfg))
 
 
 def test_offline_fixture_oracle_matches_shared_fixture():
@@ -131,8 +131,7 @@ def test_zero_network(monkeypatch):
 
     monkeypatch.setattr(socket.socket, "connect", no_network)
     monkeypatch.setattr(socket, "create_connection", no_network)
-    for offline in (True, False):  # CSV never needs the network
-        assert _bench(load_benchmark_data(source=_source(), offline=offline)).status == "ok"
+    assert _bench(load_benchmark_data(source=_source())).status == "ok"
 
 
 def test_missing_corrupt_and_unsupported_sources(monkeypatch, tmp_path):

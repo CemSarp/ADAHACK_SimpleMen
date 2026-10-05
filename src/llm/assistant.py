@@ -15,12 +15,12 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 from src.contracts.identity import canonical_hash
-from src.contracts.types import AnalysisBundle, NarrativeResult, ToolResult
+from src.contracts.types import ToolResult
 
 from .context import AnalysisContext
 from .prompt import build_system_message
 from .providers import ChatModelProvider
-from .summaries import gbp, summarize_payload, tonnes
+from .summaries import summarize_payload
 from .tools import (
     MAX_TOOL_EXECUTIONS_PER_MESSAGE,
     TOOL_SPECS,
@@ -112,22 +112,3 @@ def run_turn(
         final_text += f"\n\nNote: I stopped after {MAX_TOOL_EXECUTIONS_PER_MESSAGE} tool executions for this message."
     return TurnOutcome(text=final_text, results=results, executed=record.executed, limit_hit=limit_hit)
 
-
-def explain_analysis(analysis: AnalysisBundle, *, provider: object | None = None) -> NarrativeResult:
-    """Deterministic template explanation of a verified result bundle (no model call).
-
-    Contract boundary from SHARED_CONTRACTS.md: consumes serialized verified
-    results and never creates missing metrics.
-    """
-    opt, rec = analysis.optimization, analysis.recommendation
-    mock = " These numbers come from mock providers." if analysis.provenance.is_mock else ""
-    if opt.status != "ok" or rec.strategy_id is None:
-        text = "No feasible strategy was found within the search budget for the current constraints." + mock
-    else:
-        m = opt.strategies[rec.strategy_id].metrics
-        ratio = m["co2_reduction_ratio"]
-        text = (f"Recommended strategy {rec.strategy_id}: emissions {tonnes(m['total_co2e_tco2e'])}"
-                f"{'' if ratio is None else f' ({ratio * 100:.1f}% below baseline)'}, operating profit "
-                f"{gbp(m['total_profit_gbp'])}, gross outlay {gbp(m['total_cost_gbp'])}." + mock)
-    return NarrativeResult(status="ok", text=text, source_run_id=analysis.run_id,
-                           provider="template", is_template=True)

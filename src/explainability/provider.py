@@ -1,4 +1,4 @@
-"""WS1 forecast SHAP provider discovered by src.integration.real_providers.
+"""WS1 forecast SHAP provider (bound by src/integration/services.py).
 
 Explains the fitted WS1 tree regressors (one per horizon) on WS1's own feature
 row at the forecast origin. Contributions are in WS1's RAW model output space,
@@ -39,7 +39,7 @@ class WS1ShapProvider:
         except ImportError:
             found = False
         if not found:
-            raise ContractValidationError("shap", "the shap package is not installed (see requirements-p1.txt)")
+            raise ContractValidationError("shap", "the shap package is not installed (see requirements.txt)")
         self._forecast = forecast
         self.available_targets: tuple[str, ...] = tuple(TARGET_KEYS.values())
         self.info = ProviderInfo(slot="shap", name="ws1-shap-tree", version=f"{__version__}+{forecast.model_id}",

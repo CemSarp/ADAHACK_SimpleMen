@@ -25,7 +25,6 @@ def provider_fingerprint(providers: Mapping[str, ProviderInfo]) -> dict[str, Any
 
 def services_key(services: Services) -> str:
     return canonical_hash({
-        "mode": services.mode,
         "providers": provider_fingerprint(services.providers),
         "assumptions": _assumptions_identity(services.assumptions),
         "capabilities": {

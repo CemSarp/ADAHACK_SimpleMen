@@ -11,8 +11,7 @@ venv/
 .streamlit/secrets.toml
 
 # Generated artifacts (rebuilt from versioned inputs; metadata sidecars only)
-models/*
-!models/.gitkeep
+models/
 *.pkl
 *.joblib
 *.lgb

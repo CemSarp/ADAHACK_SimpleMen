@@ -19,9 +19,10 @@ from src.contracts.errors import (
 )
 from src.contracts.identity import config_from_row
 from src.contracts.types import AnalysisBundle, ConstraintConfig
-from src.integration import create_services, run_analysis
-from src.integration.pipeline import rerun_recommendation, select_risk_pool
-from tests.mocks import fixtures
+from src.integration import run_analysis
+from src.integration.pipeline import rerun_recommendation
+from src.optimization.recommendation import risk_pool_from_frontier
+from tests.mocks import fixtures, make_services
 from tests.mocks.behavioral import BehavioralMockSimulator
 from tests.mocks.fixture_providers import (
     FixtureBenchmarkProvider,
@@ -36,7 +37,7 @@ def test_mock_run_is_valid_serializable_and_labelled(mock_services, request_ok):
     assert bundle.optimization.status == "ok"
     val.validate_recommendation(bundle.recommendation, bundle.optimization)
     assert bundle.provenance.is_mock is True
-    assert bundle.provenance.provider == "pipeline:mock"
+    assert bundle.provenance.provider == "pipeline"
     assert {s: i.kind for s, i in bundle.providers.items()} == {
         "forecast": "fixture", "simulator": "behavioral-mock", "optimizer": "behavioral-mock"}
     assert bundle.baseline.provenance.is_mock and bundle.backtest.provenance.is_mock
@@ -104,7 +105,7 @@ def test_unsupported_horizon_rejected_before_computation(request_ok):
             Spy.called = True
             return super().get_baseline(**kwargs)
 
-    services = create_services(mode="mock", provider_overrides={"forecast": Spy()})
+    services = make_services({"forecast": Spy()})
     for horizon in (36, 60):
         with pytest.raises(UnsupportedHorizon):
             run_analysis(replace(request_ok, horizon_months=horizon), services=services)
@@ -118,7 +119,7 @@ def test_zero_baseline_co2_with_target_is_validation_error(request_ok):
             m = b.monthly.assign(scope1_tco2e=0.0, scope2_tco2e=0.0, scope3_tco2e=0.0, total_co2e_tco2e=0.0)
             return replace(b, monthly=m, totals={**b.totals, "total_co2e_tco2e": 0.0})
 
-    services = create_services(mode="mock", provider_overrides={"forecast": ZeroForecast()})
+    services = make_services({"forecast": ZeroForecast()})
     with pytest.raises(ContractValidationError, match="undefined"):
         run_analysis(request_ok, services=services)
 
@@ -133,9 +134,9 @@ def test_p0_provider_failures_propagate_typed(request_ok):
             raise SimulationError("engine failed")
 
     with pytest.raises(ForecastError):
-        run_analysis(request_ok, services=create_services(mode="mock", provider_overrides={"forecast": BrokenForecast()}))
+        run_analysis(request_ok, services=make_services({"forecast": BrokenForecast()}))
     with pytest.raises(SimulationError):
-        run_analysis(request_ok, services=create_services(mode="mock", provider_overrides={"simulator": BrokenSimulator()}))
+        run_analysis(request_ok, services=make_services({"simulator": BrokenSimulator()}))
 
 
 def test_malformed_provider_output_is_rejected(request_ok):
@@ -145,7 +146,7 @@ def test_malformed_provider_output_is_rejected(request_ok):
             return replace(b, monthly=b.monthly.assign(renewable_energy_share=20.0))
 
     with pytest.raises(ContractValidationError, match="renewable_energy_share"):
-        run_analysis(request_ok, services=create_services(mode="mock", provider_overrides={"forecast": BadForecast()}))
+        run_analysis(request_ok, services=make_services({"forecast": BadForecast()}))
 
 
 def test_optional_capabilities_produce_results_or_warnings(mock_services, request_ok):
@@ -168,7 +169,7 @@ def test_optional_failures_never_break_p0(request_ok):
         def explain(self, baseline):
             raise ForecastError("no tree model")
 
-    services = create_services(mode="mock", provider_overrides={"risk": FailingRisk(), "shap": FailingShap(),
+    services = make_services({"risk": FailingRisk(), "shap": FailingShap(),
                                                                  "benchmark": "disabled"})
     bundle = run_analysis(replace(request_ok, risk_enabled=True, explanation_enabled=True, benchmark_enabled=True),
                           services=services)
@@ -193,14 +194,14 @@ def test_benchmark_unavailable_is_a_valid_result(request_ok):
             return replace(super().benchmark(baseline), status="unavailable", reason="fewer than 10 compatible peers",
                            percentile=None, better_than_pct=None)
 
-    services = create_services(mode="mock", provider_overrides={"benchmark": NoPeers()})
+    services = make_services({"benchmark": NoPeers()})
     bundle = run_analysis(replace(request_ok, benchmark_enabled=True), services=services)
     assert bundle.benchmark.status == "unavailable" and bundle.optimization.status == "ok"
 
 
 def test_risk_pool_keeps_endpoints_and_bounds_size(mock_services, request_ok):
     pareto = run_analysis(request_ok, services=mock_services).optimization.pareto
-    pool = select_risk_pool(pareto, max_size=5)
+    pool = risk_pool_from_frontier(pareto, max_size=5)
     ordered = pareto.sort_values(["total_co2e_tco2e", "strategy_id"])["strategy_id"].tolist()
     assert len(pool) == min(5, len(ordered))
     assert pool[0] == ordered[0] and pool[-1] == ordered[-1]

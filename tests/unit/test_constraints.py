@@ -15,10 +15,8 @@ from src.contracts import validation as val
 from src.optimization.constraints import (
     SOLVER_FEASIBILITY_TOLERANCE,
     evaluate_constraints,
-    evaluate_what_if,
 )
-from tests.mocks.affine_simulator import affine_simulator
-from tests.support import assumptions_with, frames_identical, load_fixture, make_baseline
+from tests.support import assumptions_with, load_fixture, make_baseline
 
 
 def only(**actions: float) -> ActionConfig:
@@ -174,30 +172,3 @@ def test_wrong_types_are_rejected(nonzero, example_constraints):
         evaluate_constraints({"metrics": {}}, example_constraints)  # type: ignore[arg-type]
     with pytest.raises(ContractValidationError):
         evaluate_constraints(nonzero, {"budget_gbp": 1})  # type: ignore[arg-type]
-
-
-# ---------------------------------------------------------------------------
-# Manual what-if boundary
-# ---------------------------------------------------------------------------
-
-
-def test_what_if_equals_direct_simulation_and_constraint_call(baseline, assumptions, example_config, example_constraints):
-    what_if = evaluate_what_if(baseline, example_config, assumptions=assumptions, constraints=example_constraints)
-    direct = simulate_strategy(baseline, example_config, assumptions=assumptions)
-    assert what_if.simulation.strategy_id == direct.strategy_id
-    assert what_if.simulation.metrics == direct.metrics
-    assert frames_identical(what_if.simulation.monthly, direct.monthly)
-    assert what_if.constraints == evaluate_constraints(direct, example_constraints)
-
-
-def test_what_if_from_a_ui_json_payload_is_identical(baseline, assumptions, example_config):
-    payload = json.loads(json.dumps({"config": example_config.as_dict()}))
-    from_ui = evaluate_what_if(baseline, ser.action_config_from_dict(payload["config"]), assumptions=assumptions)
-    direct = simulate_strategy(baseline, example_config, assumptions=assumptions)
-    assert from_ui.constraints is None
-    assert from_ui.simulation.strategy_id == direct.strategy_id and from_ui.simulation.metrics == direct.metrics
-
-
-def test_what_if_uses_the_injected_simulator(baseline, assumptions, example_config):
-    what_if = evaluate_what_if(baseline, example_config, assumptions=assumptions, simulator=affine_simulator)
-    assert what_if.simulation.provenance.provider == "affine-test-double"

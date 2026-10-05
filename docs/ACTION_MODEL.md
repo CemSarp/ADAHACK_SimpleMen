@@ -26,7 +26,7 @@ Each action config value lies in [0,1], covers a fraction of the remaining eligi
 | Avoided costs | `electricity_gbp_per_kwh`, `gas_gbp_per_kwh`, `ice_fuel_gbp_per_km`, `travel_gbp_per_km`, `cloud_gbp_per_hour` ≥0 |
 | Supplier operations | `supplier_monthly_savings_at_full_gbp` ≥0 |
 
-The serialized object stores the shared scalar fields at the top level. Per-action cost fields live under `costs`, a map keyed by the six canonical ActionConfig names. [The assumption example](../examples/action_assumptions.json) fixes the exact nesting.
+The serialized object stores the shared scalar fields at the top level. Per-action cost fields live under `costs`, a map keyed by the six canonical ActionConfig names. [The assumption example](../tests/fixtures/v1/action_assumptions.json) fixes the exact nesting.
 
 An assumption ID/version identifies immutable parameter values. Changing a coefficient requires a new ID/version and new strategy identities. Full-action capex coefficients describe remaining eligible opportunity for this baseline company; a zero eligible opportunity requires a zero capex/opex coefficient for that action and no claimed savings.
 

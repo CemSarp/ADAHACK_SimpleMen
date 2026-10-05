@@ -1,4 +1,4 @@
-"""WS3 benchmark provider factory discovered by src.integration.real_providers.
+"""WS3 benchmark provider factory (bound by src/integration/services.py).
 
 Binds config/benchmark.json (source + comparison config) at factory time and
 delegates to load_benchmark_data / benchmark_company. `info.is_mock` is False
@@ -51,7 +51,7 @@ class OfflineBenchmarkProvider:
             if self._current_hashes() != self._data_hashes:
                 # Results must match info.version, or caches would mix snapshots.
                 raise BenchmarkSourceError("snapshot_hash_mismatch", "snapshot changed after the provider was created")
-            dataset = load_benchmark_data(source=self._source, offline=True)
+            dataset = load_benchmark_data(source=self._source)
         except BenchmarkSourceError as exc:
             meta = {"source_id": self._source.source_id, "is_synthetic": self._source.is_synthetic}
             return unavailable_result(baseline, self._config, f"source_unavailable: {exc}", meta=meta)

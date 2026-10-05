@@ -1,3 +1,0 @@
-# P2 optional explanation/chat provider. Not implemented yet; see
-# docs/handoffs/WS4_DASHBOARD_HANDOFF.md. Install only when the feature is enabled.
--r requirements-p1.txt

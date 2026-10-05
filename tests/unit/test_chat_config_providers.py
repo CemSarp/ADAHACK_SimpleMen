@@ -51,7 +51,7 @@ def test_defaults_are_mock_with_documented_model():
 def test_ollama_config_from_env():
     c = cfg(OLLAMA_MODEL="llama3.1:8b", OLLAMA_TIMEOUT_SECONDS="30", OLLAMA_MAX_OUTPUT_TOKENS="256", OLLAMA_API_KEY="s3cret")
     assert (c.provider, c.base_url, c.timeout_seconds, c.max_output_tokens) == ("ollama", "https://llm.example.test:11434", 30.0, 256)
-    assert "s3cret" not in repr(c) and "<set>" in repr(c)
+    assert "s3cret" not in repr(c) and c.api_key == "s3cret"
 
 
 @pytest.mark.parametrize("env,match", [
@@ -142,15 +142,10 @@ def test_transport_failures_propagate_and_are_never_mocked():
             OllamaChatProvider(cfg(), transport=FakeTransport(error=err)).chat([ChatMessage("user", "q")], [])
 
 
-def test_connection_check_is_explicit_and_checks_model_tag():
-    t = FakeTransport([(200, {"models": [{"name": "llama3.1:8b"}, {"name": "other:latest"}]}),
-                       (200, {"models": [{"name": "other:latest"}]})])
-    p = OllamaChatProvider(cfg(), transport=t)
-    assert t.calls == []  # constructing makes no request
-    ok = p.check_connection()
-    assert ok.ok and t.calls[0]["method"] == "GET" and t.calls[0]["url"].endswith("/api/tags")
-    missing = p.check_connection()
-    assert not missing.ok and "not listed" in missing.detail
+def test_constructing_a_provider_makes_no_request():
+    t = FakeTransport([])
+    OllamaChatProvider(cfg(), transport=t)
+    assert t.calls == []
 
 
 # --------------------------------- mock ---------------------------------- #
@@ -184,10 +179,6 @@ def test_mock_asks_for_clarification_on_ambiguous_percent_and_unknown_requests()
     assert not r.tool_calls and "Do you mean" in r.text
     r = p.chat([ChatMessage("user", "tell me a joke")], TOOL_SPECS)
     assert not r.tool_calls and "I can help with" in r.text
-
-
-def test_mock_connection_check_has_no_network():
-    assert MockChatProvider().check_connection().ok
 
 
 # ----------------------------- LM Studio adapter ---------------------------- #
@@ -250,15 +241,10 @@ def test_lmstudio_invalid_responses(payload, match):
         LMStudioChatProvider(lm(), transport=FakeTransport([(200, payload)])).chat([ChatMessage("user", "q")], [])
 
 
-def test_lmstudio_error_body_and_connection_check():
+def test_lmstudio_error_body():
     t = FakeTransport([(400, {"error": {"message": "No models loaded"}})])
     with pytest.raises(ChatServerError, match="No models loaded"):
         LMStudioChatProvider(lm(), transport=t).chat([ChatMessage("user", "q")], [])
-    t = FakeTransport([(200, {"data": [{"id": "google/gemma-4-12b"}, {"id": "other"}]}), (200, {"data": []})])
-    p = LMStudioChatProvider(lm(), transport=t)
-    ok = p.check_connection()
-    assert ok.ok and ok.models == ("google/gemma-4-12b", "other") and t.calls[0]["url"].endswith("/v1/models")
-    assert not p.check_connection().ok
 
 
 def test_lmstudio_thinking_past_the_budget_becomes_a_plain_message_not_a_failure():

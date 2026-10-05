@@ -20,7 +20,7 @@ from src.risk.monte_carlo import (
     load_uncertainty,
     sample_multipliers,
 )
-from tests.mocks import fixtures
+from tests.mocks import fixtures, make_services
 from tests.mocks.behavioral import BehavioralMockSimulator
 
 
@@ -168,10 +168,10 @@ def test_hybrid_discovers_real_risk_provider_and_pipeline_matches_pareto(request
     from src.contracts.protocols import RiskProvider
     from src.integration import create_services, run_analysis
     from src.integration.cache_keys import services_key
-    from src.integration.pipeline import select_risk_pool
+    from src.optimization.recommendation import risk_pool_from_frontier
     from src.risk.provider import create_risk_provider
 
-    services = create_services(mode="hybrid", provider_overrides={"risk": "real"})
+    services = make_services({"risk": "real"})
     info = services.providers["risk"]
     spec = load_uncertainty()
     assert isinstance(services.risk, RiskProvider) and services.capabilities.risk_available
@@ -181,7 +181,7 @@ def test_hybrid_discovers_real_risk_provider_and_pipeline_matches_pareto(request
     request = replace(request_ok, risk_enabled=True, risk_config=RiskConfig(seed=5, n_simulations=50))
     bundle = run_analysis(request, services=services)
     pareto_ids = set(bundle.optimization.pareto["strategy_id"])
-    assert bundle.risk_results and set(bundle.risk_results) == set(select_risk_pool(bundle.optimization.pareto))
+    assert bundle.risk_results and set(bundle.risk_results) == set(risk_pool_from_frontier(bundle.optimization.pareto))
     assert set(bundle.risk_results) <= pareto_ids
     for sid, r in bundle.risk_results.items():
         val.validate_risk_result(r)
@@ -192,7 +192,7 @@ def test_hybrid_discovers_real_risk_provider_and_pipeline_matches_pareto(request
     (tmp_path / "u.json").write_text(json.dumps(UncertaintySpec.neutral().to_dict()))
     other = create_risk_provider(tmp_path / "u.json")
     assert other.info.version != info.version
-    swapped = create_services(mode="hybrid", provider_overrides={"risk": other})
+    swapped = make_services({"risk": other})
     assert services_key(swapped) != services_key(services)
 
 
@@ -251,7 +251,7 @@ def test_saved_mock_simulator_sample_is_reproducible():
     from src.contracts.types import RiskResult
     from src.contracts.validation import validate_risk_result
 
-    path = Path(__file__).resolve().parents[2] / "carbonopt-ai-docs/docs/handoffs/ws3/risk_sample_mock_simulator.json"
+    path = Path(__file__).resolve().parents[2] / "tests/fixtures/v1/risk_sample_mock_simulator.json"
     saved = validate_risk_result(ser.from_json(RiskResult, path.read_text()))
     assert saved.provenance.is_mock and saved.n_simulations == len(saved.samples) == 1000
     fresh = _run(config=RiskConfig(seed=42, n_simulations=1000, retain_samples=True))

@@ -1,20 +1,16 @@
-# P0 runtime + test dependencies (Python 3.11 reference runtime).
-# Verified together with a clean install and the offline P0 test suite at C0 (WS4).
-# Domain owners add their P0 libraries here in their own PRs (e.g. WS1 lightgbm,
-# scikit-learn; WS2 pymoo) after a clean install/import check.
+# Pinned app + test dependencies (Python 3.11). CI installs exactly this file.
 numpy==2.4.6
 pandas==3.0.6
 plotly==7.1.0
 streamlit==1.65.0
 pytest==9.1.1
-# WS2 NSGA-II. 0.6.2+ seeds a local Generator and never touches the global NumPy RNG.
-# Imported lazily: mock-mode startup does not need it; the real optimizer provider does.
+# NSGA-II optimizer. 0.6.2+ seeds a local Generator and never touches the global NumPy RNG.
 pymoo==0.6.2
-# WS1 forecasting (P0 since integration): ml_core/modelling.py imports matplotlib and scikit-learn,
-# and uses XGBoost, LightGBM and Prophet when they import. macOS: XGBoost/LightGBM need the OpenMP
-# runtime (brew install libomp). Versions verified together on 2026-10-03 (Python 3.11).
+# Forecasting (ml_core/modelling.py). macOS: XGBoost/LightGBM need the OpenMP runtime (brew install libomp).
 scikit-learn==1.9.1
 xgboost==3.2.0
 lightgbm==4.7.0
 prophet==1.4.0
 matplotlib==3.11.2
+# Forecast explanation over the trained tree models.
+shap==0.51.0

@@ -5,7 +5,6 @@ are supported; HTTP sources are rejected explicitly and nothing touches the netw
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping
@@ -59,12 +58,8 @@ class BenchmarkSource:
         return dict(self.__dict__)
 
 
-def load_benchmark_data(*, source: BenchmarkSource, timeout_seconds: float = 5.0, offline: bool = False) -> BenchmarkDataset:
-    """Read the normalized snapshot. CSV never needs the network, whatever `offline` says."""
-    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not (
-        math.isfinite(timeout_seconds) and timeout_seconds > 0
-    ):
-        raise ContractValidationError("timeout_seconds", "must be a finite positive number")
+def load_benchmark_data(*, source: BenchmarkSource) -> BenchmarkDataset:
+    """Read the normalized offline CSV snapshot (no network)."""
     if source.kind != "csv":
         # ponytail: live HTTP sources are out of scope; add an adapter only after a real source qualifies.
         raise BenchmarkSourceError("unsupported_source", f"source kind {source.kind!r} is not supported; only offline csv")

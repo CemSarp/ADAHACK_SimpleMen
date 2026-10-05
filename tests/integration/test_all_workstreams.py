@@ -7,9 +7,7 @@ minute and later runs reuse models/ws1-test). Numbers here describe synthetic da
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import replace
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,8 +23,10 @@ from src.forecasting.history import REPO_ROOT, load_company_history
 from src.forecasting.ws1_adapter import identity_for, model_id_for
 from src.integration import cache_keys, create_services, run_analysis
 from src.integration.config import IntegrationConfig
-from src.integration.pipeline import compare_scenarios, select_risk_pool
+from src.integration.pipeline import compare_scenarios
+from src.optimization.recommendation import risk_pool_from_frontier
 from src.risk.monte_carlo import UncertaintySpec, evaluate_strategy_risk
+from tests.mocks import make_services
 
 CSV = "data/synthetic_data.csv"
 IMPORT = "config/company_import.json"
@@ -34,7 +34,7 @@ IMPORT = "config/company_import.json"
 
 @pytest.fixture(scope="module")
 def services():
-    return create_services(mode="real")
+    return create_services()
 
 
 @pytest.fixture(scope="module")
@@ -195,7 +195,7 @@ def test_zero_uncertainty_risk_equals_deterministic_simulation(services, bundle,
 
 
 def test_risk_results_join_baseline_and_pool(bundle):
-    pool = select_risk_pool(bundle.optimization.pareto)
+    pool = risk_pool_from_frontier(bundle.optimization.pareto)
     assert set(bundle.risk_results) == set(pool) and len(pool) <= 20
     for sid, r in bundle.risk_results.items():
         assert r.strategy_id == sid and r.baseline_id == bundle.baseline.baseline_id
@@ -258,10 +258,10 @@ def test_model_identity_changes_with_data_settings_and_mapping(tmp_path):
 
 def test_cache_keys_cover_assumptions_uncertainty_and_providers(services, request_real):
     key = cache_keys.analysis_key(request_real, services)
-    hybrid = create_services(mode="hybrid", provider_overrides={"forecast": "real", "simulator": "real",
+    hybrid = make_services({"forecast": "real", "simulator": "real",
                                                                 "optimizer": "real", "risk": "disabled"})
     assert cache_keys.analysis_key(request_real, hybrid) != key
-    fixture_bound = create_services(mode="hybrid", provider_overrides={"forecast": "fixture", "simulator": "real",
+    fixture_bound = make_services({"forecast": "fixture", "simulator": "real",
                                                                        "optimizer": "real"})
     # The demo fixture baseline gets the demo assumptions, never the CSV company's.
     assert fixture_bound.assumptions.assumptions_id == "demo-actions-v1"
@@ -293,7 +293,7 @@ def test_optional_failures_leave_core_analysis_usable(services, request_real, mo
 
 
 def test_real_mode_has_no_mocked_computational_provider(services, bundle):
-    assert services.mode == "real" and not services.is_mock
+    assert not services.is_mock
     assert all(info.kind == "real" and not info.is_mock for info in services.providers.values())
     assert bundle.provenance.is_mock is False
     assert all(not s.provenance.is_mock for s in list(bundle.optimization.strategies.values())[:20])
@@ -343,7 +343,7 @@ def test_real_services_bind_from_any_working_directory(tmp_path):
 
     code = ("import sys; sys.path.insert(0, %r)\n"
             "from src.integration import create_services\n"
-            "s = create_services(mode='real')\n"
+            "s = create_services()\n"
             "assert s.capabilities.risk_available and s.capabilities.benchmark_available, s.unavailable\n"
             "print('ok')\n") % str(REPO_ROOT)
     proc = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True, timeout=300)

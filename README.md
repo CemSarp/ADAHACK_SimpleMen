@@ -54,7 +54,7 @@ cd ADAHACK_SimpleMen
 
 conda env create -f environment.yml      # creates the "adahack" env (Python 3.11)
 conda activate adahack
-python -m pip install -r requirements.txt   # pins streamlit, pymoo, pytest to the tested versions
+python -m pip install -r requirements.txt   # pins every app and test dependency to the tested versions
 
 python -m streamlit run app.py
 ```
@@ -88,9 +88,8 @@ forecast settings, action assumptions, uncertainty settings, peer benchmark and 
 defaults. Set `CARBONOPT_CONFIG` to another configuration file when deploying a different
 company. The company ID comes from that file's import mapping.
 
-Explicit mock and hybrid service construction remains available only as a test injection
-seam. Test doubles and fixture/domain combinations are covered by the regression suite;
-they are not dashboard launch options.
+Tests inject doubles per slot through `tests.mocks.make_services`; they are not launch
+options. See [Architecture](docs/ARCHITECTURE.md) for how services and the pipeline fit together.
 
 The Model Selection panel compares methods on the historical dataset independently.
 It does not alter the configured planning forecast or its model identity.
@@ -101,7 +100,7 @@ It does not alter the configured planning forecast or its model identity.
 
 ```mermaid
 flowchart LR
-    UI["Streamlit dashboard<br/>app.py + src/dashboard"] --> REG["Provider registry<br/>src/integration/services.py"]
+    UI["Streamlit dashboard<br/>app.py + src/dashboard"] --> REG["Company services<br/>src/integration/services.py"]
     CHAT["Assistant<br/>src/llm"] --> REG
     REG --> F["Forecast<br/>Configured company CSV"]
     REG --> S["Simulator<br/>src/actions"]
@@ -193,7 +192,7 @@ python -m streamlit run app.py
 | `OLLAMA_TIMEOUT_SECONDS` / `OLLAMA_MAX_OUTPUT_TOKENS` | Limits | `60` / `512` |
 | `OLLAMA_API_KEY` | Optional gateway bearer token | none |
 
-Remote failures appear as a retryable user-facing error; server logs retain diagnostics. Connection-check APIs remain available for integration tests. To run the opt-in live test:
+Remote failures appear as a retryable user-facing error; server logs retain diagnostics. To run the opt-in live test:
 
 ```bash
 RUN_OLLAMA_LIVE_SMOKE=1 CHATBOT_PROVIDER=ollama OLLAMA_BASE_URL=https://<host> \
@@ -206,7 +205,7 @@ Details: [docs/CHATBOT_IMPLEMENTATION.md](docs/CHATBOT_IMPLEMENTATION.md).
 
 ## 🛠️ Command-line tools
 
-No UI needed. These use the fixture baseline in `tests/fixtures/v1/` and print their provenance.
+No UI needed. The optimizer CLI uses the fixture baseline in `tests/fixtures/v1/`; every command prints its provenance.
 
 ```bash
 # WS2 backend: simulate one configuration, run the optimizer, or time the simulator
@@ -214,8 +213,11 @@ python -m src.optimization.cli simulate
 python -m src.optimization.cli optimize --max-evaluations 256 --output optimization.json
 python -m src.optimization.cli profile
 
-# WS3 Monte Carlo risk demo (100 trials against the mock simulator)
-python scripts/demo_ws3_risk.py
+# Train (or verify cached) forecast models before launching the dashboard
+python -m src.forecasting.train
+
+# Full analysis on the configured company, printed with timings
+python -m scripts.run_integrated_analysis
 ```
 
 Add `--help` to any subcommand for its flags.
@@ -225,8 +227,8 @@ Add `--help` to any subcommand for its flags.
 The generator creates source data. The modelling pipeline is also used by the forecasting adapter; the commands below can run independently.
 
 ```bash
-python synthetic_data_generation/synthetic_data_generator.py   # ~4 s, plots to synthetic_data_generation/temp_outputs/
-python ml_core/modelling.py                                    # ~40 s, forecast to ml_core/temp_outputs/modelling_results/
+python -m synthetic_data_generation.synthetic_data_generator   # ~4 s, plots to synthetic_data_generation/temp_outputs/
+python -m ml_core.modelling                                    # ~40 s, forecast to ml_core/temp_outputs/modelling_results/
 ```
 
 The generator simulates 25 years of monthly logistics-company data. The modelling script compares a seasonal-naive baseline, Random Forest and (if installed) XGBoost, LightGBM and Prophet with walk-forward backtests, then forecasts the next three months of emissions and profit with prediction intervals. The `temp_outputs/` folders are git-ignored.
@@ -239,7 +241,7 @@ The generator simulates 25 years of monthly logistics-company data. The modellin
 app.py                      Streamlit entry point
 src/
 ├── contracts/              Typed schemas, validation, errors, provider protocols
-├── integration/            Company service registry and analysis pipeline
+├── integration/            Company services, analysis pipeline and cache keys
 ├── actions/                WS2  six-action simulator and financial accounting
 ├── optimization/           WS2  NSGA-II, Pareto, constraints, recommendation, CLI
 ├── risk/                   WS3  Monte Carlo risk
@@ -248,11 +250,11 @@ src/
 └── llm/                    WS4  chatbot client, tools, mock model
 ml_core/                    WS1  multi-target forecasting pipeline and model comparison
 synthetic_data_generation/  WS1  synthetic company data generator
-config/                     Action assumptions, uncertainty and benchmark settings
-data/                       Offline peer benchmark snapshot
+config/                     Integration, action assumptions, uncertainty and benchmark settings
+data/                       Company CSV, peer benchmark and public-data snapshots
+scripts/                    End-to-end analysis runner
 tests/                      Contract, unit and integration tests, plus mocks and fixtures
-carbonopt-ai-docs/          Specifications and handoffs
-docs/                       Workstream handoffs and chatbot notes
+docs/                       Architecture, specifications and chatbot notes
 ```
 
 ### Integrated modules
@@ -270,13 +272,12 @@ using domain services does not make the data reported or the assumptions calibra
 
 | Document | Purpose |
 |---|---|
-| [carbonopt-ai-docs/](carbonopt-ai-docs/README.md) | Full specification set: contracts, schemas, action model, forecasting, risk and benchmark |
-| [Implementation plan](carbonopt-ai-docs/IMPLEMENTATION_PLAN.md) | Scope, priorities, ownership, milestones |
-| [Integration guide](carbonopt-ai-docs/docs/INTEGRATION_GUIDE.md) | Provider wiring and checkpoints |
-| [WS2 handoff](docs/handoffs/WS2_HANDOFF.md) | Action engine and optimiser details |
-| [WS4 handoff](docs/handoffs/WS4_DASHBOARD_HANDOFF.md) | Dashboard and provider registry |
-| [WS3 delivery](carbonopt-ai-docs/docs/handoffs/ws3/WS3_DELIVERY.md) | Risk and benchmark delivery notes |
-| [Chatbot plan](docs/CHATBOT_IMPLEMENTATION.md) | Assistant architecture |
+| [Shared contracts](docs/SHARED_CONTRACTS.md) · [Data schemas](docs/DATA_SCHEMAS.md) | Python boundaries, result types, errors; DataFrame/JSON fields and units |
+| [Action model](docs/ACTION_MODEL.md) | The deterministic simulator, action interactions and accounting |
+| [Forecasting](docs/FORECASTING_SPEC.md) · [Risk and benchmark](docs/RISK_AND_BENCHMARK_SPEC.md) | Model features and evaluation; Monte Carlo, recommendation policy, peers |
+| [Architecture](docs/ARCHITECTURE.md) · [Tests and mocks](docs/TESTING_AND_MOCKS.md) | Services, pipeline and dashboard; fixtures and test doubles |
+| [Decisions](docs/DECISIONS.md) | Frozen assumptions and recorded choices |
+| [Chatbot](docs/CHATBOT_IMPLEMENTATION.md) | Assistant architecture |
 
 ---
 
@@ -286,7 +287,6 @@ using domain services does not make the data reported or the assumptions calibra
 |---|---|
 | Update after `environment.yml` changes | `conda env update -f environment.yml` |
 | Reinstall pinned app and test dependencies | `python -m pip install -r requirements.txt` |
-| Register a Jupyter kernel | `python -m ipykernel install --user --name adahack --display-name "Python (adahack)"` |
 | Deactivate | `conda deactivate` |
 | Remove the environment | `conda env remove -n adahack` |
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping
 from urllib.parse import urlsplit
 
@@ -34,12 +34,7 @@ class ChatbotConfig:
     model: str = DEFAULT_MODEL
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS
-    api_key: str | None = None
-
-    def __repr__(self) -> str:  # never leak the token
-        key = "<set>" if self.api_key else None
-        return (f"ChatbotConfig(provider={self.provider!r}, base_url={self.base_url!r}, model={self.model!r}, "
-                f"timeout_seconds={self.timeout_seconds!r}, max_output_tokens={self.max_output_tokens!r}, api_key={key})")
+    api_key: str | None = field(default=None, repr=False)  # never leak the token
 
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "ChatbotConfig":
