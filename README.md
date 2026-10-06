@@ -21,6 +21,15 @@ A decision-support dashboard that forecasts a company's emissions and profit, si
 
 ---
 
+## 🎯 Why CarbonOpt
+
+- **Who it's for:** sustainability, finance and operations teams that have to commit to an emissions target and a budget together. It is built around logistics and supply-chain companies (fleets, warehouses, suppliers), and works for any company with monthly figures, such as the example manufacturer.
+- **Use cases:** setting a realistic CO₂ target before announcing it; deciding where next year's decarbonisation budget goes; checking whether a target fits the budget and profit floor; testing what-ifs ("80% electric fleet?"); explaining the plan to a board with its risk.
+- **How it helps:** it turns "cut emissions by 15%" into a concrete action mix with its cost, profit impact and chance of success. When a goal can't be met, it says what would make it work instead of just failing.
+- **What's different:** most carbon tools *measure and report* emissions. CarbonOpt *plans*: it optimises cuts against money, accepts any company's monthly CSV, shows every assumption, and its assistant answers only from computed results, using a model that can run locally so the data stays on your machine.
+
+---
+
 ## ✨ What it does
 
 | | Capability | Detail |
