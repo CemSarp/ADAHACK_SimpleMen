@@ -55,21 +55,34 @@ All doubles and real providers implement the same public protocols and serialize
 
 ### Chatbot mocks and tests
 
-`MockChatProvider` (`src/llm/providers.py`) is a deterministic, rule-based model double labelled **MOCK MODEL**; it is not a language model and exists only so the UI, tool loop and tests run offline. The Ollama adapter is tested with an injected fake transport (request shape, normalization, timeouts, HTTP errors, invalid bodies); no test needs a live endpoint. Required tests: provider normalization, configuration validation, no network at import or in mock mode, tool allowlist and argument validation, adoption-share conversion and percent ambiguity, server-bound context and versioning, execution limits and duplicate/retry dispatch, capability and provenance propagation, conversation persistence and stale cards, card accuracy against direct service calls, remote failure without mock fallback, P0 startup without chatbot configuration, and AppTest coverage of the floating panel. A live smoke test (`tests/integration/test_ollama_live.py`) is opt-in via `RUN_OLLAMA_LIVE_SMOKE=1` with `OLLAMA_BASE_URL` and is skipped otherwise.
+`MockChatProvider` (`src/llm/providers.py`) is the **guided assistant**: deterministic rules that map preset
+questions to real tool calls and summarise the results. It is not a language model; it runs offline and is
+the default and the test double for the model. The LM Studio and Ollama adapters are tested with an injected
+fake transport (request shape, tool-call ids, reasoning stripping, out-of-budget replies, timeouts, HTTP
+errors, invalid bodies); no test needs a live endpoint.
+
+Covered offline: provider wire formats, configuration validation, no network at import or in mock mode, the
+tool allowlist and every argument rule, share conversion and percent ambiguity, each tool's output (forecast
+model and accuracy, forecast drivers, infeasible hints, no-effect notes, missing scopes), server-bound context
+and versioning, execution limits and duplicate/retry dispatch, prompt rules (Find plans, data kind, what-ifs
+without a plan, "all remaining"), the system-message size budget, conversation persistence and stale cards, and
+the floating panel through AppTest.
+
+Live checks are opt-in. `tests/integration/test_ollama_live.py` runs with `RUN_OLLAMA_LIVE_SMOKE=1` and
+`OLLAMA_BASE_URL`. For LM Studio, start the app with `CHATBOT_PROVIDER=lmstudio` and ask the questions listed in
+CHATBOT_IMPLEMENTATION.md §8; each answer's cards show which tool ran and with which result.
 
 ## 3. Test structure and minimum suite
 
-| Layer | Paths | Required assertions |
+| Layer | Paths | What they check |
 |---|---|---|
-| Contract | `tests/contracts/` | Required fields, dtypes, units, JSON round-trip, versions, date continuity |
-| WS1 unit | `tests/unit/test_data.py`, `test_features.py`, `test_forecast.py`, `test_backtest.py` | Leakage, recursion, reproducibility, scope reconciliation |
-| WS2 unit | `tests/unit/test_actions.py`, `test_accounting.py`, `test_constraints.py`, `test_pareto.py` | No-op, interactions, profit/cash accounting, signs/dominance |
-| WS3 unit | `tests/unit/test_risk.py`, `test_benchmark.py`, `test_benchmark_adapters.py` | Trial identity, probability, unit/coverage/percentile, network failure |
-| WS4 unit | `tests/unit/test_dashboard_state.py`, `test_tools.py` | Cache/state invalidation, validation, allowlist, provider failure |
-| Integration | `tests/integration/test_pipeline.py`, `test_provider_swap.py` | Provider substitutions; end-to-end result consistency |
-| Optional | `tests/unit/test_shap.py` | Raw-output additivity, unavailable target |
-
-Entries with only a filename in the unit table are relative to `tests/unit/`.
+| Contract | `tests/contracts/test_schemas.py`, `test_shared_contract_changes.py`, `test_offline_startup.py` | Fields, dtypes, units, JSON round-trip, versions, date continuity; startup without network or chatbot config |
+| Forecast and import | `tests/integration/test_all_workstreams.py`, `test_model_choice.py`, `test_upload.py` | Import repairs and refusals, leakage safety, backtest, model choice and on-demand comparison, uploads end to end |
+| Actions and optimizer | `tests/unit/test_actions.py`, `test_accounting.py`, `test_constraints.py`, `test_pareto.py`, `test_optimizer.py`, `test_recommendation.py` | No-op, interactions, profit/cash accounting, feasibility, relaxation hints, dominance, inactive actions, recommendation policy |
+| Risk and benchmark | `tests/unit/test_risk.py`, `test_benchmark.py`, `tests/integration/test_ws3_providers.py` | Trial identity, probabilities, percentile, unavailable peers |
+| Dashboard | `tests/unit/test_dashboard_state.py`, `test_presentation_and_charts.py`, `test_public_data.py`, `tests/integration/test_product_dashboard.py`, `test_integrated_dashboard.py` | State invalidation, formatting, hints, Monte Carlo text, charts (top-*k* drivers, timeline, model errors, grid), the page through AppTest |
+| Assistant | `tests/unit/test_chat_*.py`, `tests/integration/test_chat_ui.py` | See above |
+| Integration | `tests/integration/test_pipeline.py`, `test_provider_swap.py`, `test_ws2_ws4_hybrid.py` | Provider substitutions; end-to-end result consistency |
 
 Mandatory cross-boundary tests:
 

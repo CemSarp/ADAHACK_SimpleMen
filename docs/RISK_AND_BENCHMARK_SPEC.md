@@ -37,6 +37,8 @@ Compute mean and empirical p05/p95 for emissions/profit, p95 cost, separate cons
 
 Independence is the initial documented limitation. Correlated effectiveness/energy prices are future enhancements unless a tested correlation specification fits the timebox. Do not accept an arbitrary non-PSD correlation matrix.
 
+On the page, **How this is calculated** (Confidence › Uncertainty) is generated from the bound `UncertaintySpec` and the requested trial count (`presentation.uncertainty_method`), so its ranges always match the configuration in use; the assistant's `get_risk_summary` returns the same probabilities and p05–p95 outcomes.
+
 ## 2. Risk-aware recommendation
 
 P0 NSGA-II remains deterministic with objectives emissions and profit. P1 evaluates risk for a bounded selection pool of at most 20 deterministic feasible Pareto strategies, preserving both objective endpoints and evenly sampling other points by emissions order. If the frontier has ≤20 points, evaluate all. The UI states that risk selection covers this pool.

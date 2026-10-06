@@ -150,8 +150,22 @@ External adapters normalize data before it reaches `benchmark_company`. Benchmar
 ### WS4 — orchestration and optional explanation
 
 ~~~python
-# src/integration/services.py — real providers; overrides inject instances or disable (None) optional slots
-def create_services(overrides: Mapping[str, object | None] | None = None) -> Services: ...
+# src/integration/services.py — real providers; overrides inject instances or disable (None) optional slots;
+# model forecasts with a named WS1 model instead of the automatic choice
+def create_services(overrides: Mapping[str, object | None] | None = None, *, model: str | None = None) -> Services: ...
+
+# the same services for an uploaded monthly table and its confirmed column mapping (DATA_SCHEMAS.md §2a)
+def create_dataset_services(
+    raw: pd.DataFrame, mapping: Mapping[str, Any], *, name: str, sha256: str, model: str | None = None
+) -> Services: ...
+
+# src/optimization/constraints.py — what the evaluated candidates say about loosening one goal at a time
+def relaxation_hints(candidates: pd.DataFrame, constraints: ConstraintConfig) -> dict[str, float | None]: ...
+
+# src/forecasting/ws1_adapter.py — on-demand model scoring; nothing is stored for planning
+def compare_models(
+    imported: ImportedHistory, settings: Mapping[str, Any], horizon: int, models: tuple[str, ...]
+) -> pd.DataFrame: ...
 
 # src/integration/pipeline.py
 def run_analysis(
@@ -173,11 +187,11 @@ Capabilities include `supported_horizons`, `risk_available`, `shap_available_tar
 
 ### Chatbot additions (contract 1.x, additive; require producer/consumer review)
 
-`ToolResult(status, tool_name, validated_arguments, data, error)` is defined in `src/contracts/types.py` with the fields listed in the Tool/Narrative paragraph of DATA_SCHEMAS.md. `status` for tools is `ok`, `error` or `unavailable`; `data` is a plain JSON-safe mapping built from serialized public results. The model-provider boundary (`ChatModelProvider`: `chat(messages, tools) -> ModelResponse`) lives in `src/llm/providers.py`, not in contracts, because it is WS4-internal. `execute_tool(name, arguments, *, context, services)` binds `AnalysisContext` on the server side. No existing field changed. See [CHATBOT_IMPLEMENTATION.md](CHATBOT_IMPLEMENTATION.md). Review status: not reviewed by WS1-WS3.
+`ToolResult(status, tool_name, validated_arguments, data, error)` is defined in `src/contracts/types.py` with the fields listed in the Tool/Narrative paragraph of DATA_SCHEMAS.md. `status` for tools is `ok`, `error` or `unavailable`; `data` is a plain JSON-safe mapping built from serialized public results. The eight tools and their arguments and outputs are listed in CHATBOT_IMPLEMENTATION.md §4. The model-provider boundary (`ChatModelProvider`: `chat(messages, tools) -> ModelResponse`) lives in `src/llm/providers.py`, not in contracts, because it is WS4-internal. `execute_tool(name, arguments, *, context, services)` binds `AnalysisContext` on the server side. No existing field changed. See [CHATBOT_IMPLEMENTATION.md](CHATBOT_IMPLEMENTATION.md). Review status: not reviewed by WS1-WS3.
 
 ### Integration notes (additive; require review)
 
-- **Factories.** The real provider entry points are `src.forecasting.provider.create_forecast_provider()` and `src.explainability.provider.create_explanation_provider()` (integration adapters around WS1's `ml_core.modelling`), plus WS3's `create_risk_provider(path)` and `create_benchmark_provider(path)`. Paths are passed repo-rooted.
+- **Factories.** The real provider entry points are `src.forecasting.provider.WS1ForecastProvider(config, imported=None)` (the configured company CSV, or an already imported upload; `create_forecast_provider()` builds it from `config/integration.json`) and `src.explainability.provider.WS1ShapProvider(forecast)`, which explains exactly the forecast it is given (integration adapters around WS1's `ml_core.modelling`), plus WS2's `WS2SimulatorProvider(assumptions_path=None, assumptions=None)` and WS3's `create_risk_provider(path)` and `create_benchmark_provider(path)`. Paths are passed repo-rooted.
 - **Backtest predictions.** `BacktestReport.oof_predictions` may carry an additive `horizon` column (multi-horizon walk-forward). Aggregate metrics pool all horizons. Consumers that ignore the column still work.
 - **SHAP units.** `ExplanationResult.units` may describe WS1's relative raw output space (log ratio or margin deviation) rather than tonnes or GBP. The output space remains `raw_model`.
 - **Baseline currency.** The baseline currency stays GBP. A non-GBP source enters only through the explicit import adapter, with a recorded FX method.

@@ -15,7 +15,7 @@ Each action config value lies in [0,1], covers a fraction of the remaining eligi
 | Group | Fields / invariant |
 |---|---|
 | Identity | `assumptions_id`, `version`, `is_calibrated`, `description` |
-| Scope1 partition | `gas_share`, `ice_fleet_share`; each ≥0, sum = 1 |
+| Scope1 partition | `gas_share`, `ice_fleet_share`; each ≥0, sum ≤ 1 (any remainder is other scope 1 that no action touches) |
 | Scope3 partition | `travel_share`, `cloud_share`, `supplier_share`, `other_share`; sum = 1 |
 | Activity allocation | `building_electricity_share`, `building_gas_share` in [0,1] |
 | Action effectiveness | `building_max_reduction`, `cloud_max_reduction`, `supplier_max_reduction` in [0,1] |
@@ -30,9 +30,27 @@ The serialized object stores the shared scalar fields at the top level. Per-acti
 
 An assumption ID/version identifies immutable parameter values. Changing a coefficient requires a new ID/version and new strategy identities. Full-action capex coefficients describe remaining eligible opportunity for this baseline company; a zero eligible opportunity requires a zero capex/opex coefficient for that action and no claimed savings.
 
-P0 capex and fixed opex coefficients describe the configured demo company, not universally transferable costs. If company scale changes, regenerate assumptions or introduce a reviewed activity-based cost model; the UI cannot rescale economics privately.
+P0 capex and fixed opex coefficients describe the configured demo company, not universally transferable costs. For an uploaded company they are rescaled by a documented, still illustrative rule (§2a); the UI never rescales economics privately.
 
 In scope allocations, `gas_share` and `ice_fleet_share` allocate reported scope1, not separate measured scope1 columns. Scope3 shares are synthetic decomposition assumptions. Show them in the assumptions panel. Incompatible zero activity/positive allocated emissions fails validation.
+
+### 2a. Assumptions for an uploaded company
+
+`src/actions/calibrate.py` (`calibrate_assumptions(history, template, assumptions_id)`) derives a new
+`ActionAssumptions` from the demo template and the company's last 12 months:
+
+- **Shares from the company's own data.** Scope 1 splits into gas (gas kWh × 0.183 kgCO₂e/kWh) and fleet; scope 3
+  into travel (km × factor), cloud (hours × factor) and the template's supplier/other split.
+- **Costs scaled by addressable activity.** Each action's capex, running cost and supplier savings are the
+  template's multiplied by the company's yearly addressable activity over the demo company's (non-renewable
+  electricity kWh, combustion-fleet km, building electricity + gas kWh, supplier tCO₂e). Travel and cloud tools
+  cost a fifth of the savings they unlock.
+- **No data, no action.** An action whose activity is not reported gets zero share and zero cost, so it changes
+  nothing. `src.optimization.inactive_actions` detects such actions with one probe per action; the optimizer
+  keeps them at zero (diagnostics `inactive_actions`, `probe_count`), the page hides their sliders with what they
+  need, and the assistant says they have no effect.
+
+The result keeps `is_calibrated = false` and is labelled illustrative everywhere it is shown.
 
 ## 3. Monthly transformation sequence
 
@@ -149,6 +167,8 @@ The optimizer minimizes both objectives. Plotting can display profit positively 
 Evaluate no-op plus deterministic seed configurations before NSGA-II. Retain all unique candidates actually evaluated. A point dominates another if it is no worse in emissions/profit and strictly better in at least one dimension beyond numerical tolerance. Filter infeasible points first; cost does not participate in P0 dominance.
 
 Retain equivalent objective ties when configs differ and risk outcomes may differ; use stable strategy ID order for deterministic presentation. Exact duplicate configs are removed by canonical full-precision identity. Recompute all returned Pareto points using the canonical simulator and validate feasibility before publishing them.
+
+When no evaluated candidate is feasible the result is `status="infeasible"` with an empty frontier and no recommendation (a valid result, not an error). `src.optimization.relaxation_hints(candidates, constraints)` then reads the evaluated candidates one goal at a time: the lowest spend that keeps profit above the floor and reaches the target, the highest profit within budget that reaches the target, the deepest cut within budget and floor, and the deepest cut tried at all. The page rounds these towards a goal that works ("Raise the budget to about £4.3m"); the assistant receives them as `how_to_meet_goals`. They describe mixes already tried, so a new search with a loosened goal may land slightly differently.
 
 P0 recommendation uses min-max normalized emissions and negative profit among feasible Pareto points, equal weights, and stable ID tie-break. If one objective is constant, its normalized term is zero; if the frontier has one point, select it. [The risk specification](RISK_AND_BENCHMARK_SPEC.md) defines P1 tolerance selection without changing deterministic frontier semantics.
 

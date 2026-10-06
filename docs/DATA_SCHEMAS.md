@@ -24,7 +24,7 @@ Monthly revenue/profit/emissions are flows and sum across months. Employees/flee
 
 ## 2. Company history DataFrame
 
-One row per company-month; P0 has one company and normally 204 months. Suggested synthetic history is January 2010–December 2026, a fixed demonstration timeline independent of wall-clock date. Do not imply a future synthetic month is a reported observation.
+One row per company-month for one company, at least 24 months. The demo company (`data/synthetic_data.csv`) has 300 synthetic months (January 2001–December 2025); an uploaded table has whatever months it reports. Do not imply a synthetic month is a reported observation.
 
 | Column | Type | Rule / meaning |
 |---|---|---|
@@ -46,11 +46,52 @@ One row per company-month; P0 has one company and normally 204 months. Suggested
 | `scope3_tco2e` | float | ≥ 0 |
 | `total_co2e_tco2e` | float | Exact sum of three scopes within tolerance |
 
-Required history columns are those listed above, in this order for CSV exports. Inputs validate by name, not positional order. Legacy names such as `renewable_energy_pct`, `cloud_usage`, or `total_co2e` are accepted only by a documented import adapter that converts units and renames fields.
+Required history columns are those listed above, in this order for CSV exports. Inputs validate by name, not positional order. Any other names or units (`renewable_energy_pct`, `Net Sales (USD)`, `total_co2e`) enter only through the import adapter below, which converts units, renames fields and records every change.
+
+### 2a. Import configuration
+
+`src/forecasting/history.py` turns a raw monthly table into this history using an import configuration. The demo company's is `config/company_import.json`; for uploads the dashboard builds one from the columns the user confirms (`src/forecasting/mapping.py`, `import_mapping`).
+
+~~~json
+{
+  "import_id": "upload-acme-manufacturing",
+  "version": "1.0.0",
+  "company_id": "acme-manufacturing",
+  "date_column": "Month",
+  "currency": {"source": "USD", "target": "GBP", "gbp_per_unit": 0.79, "fx_note": "(user-entered rate)"},
+  "columns": {
+    "revenue_gbp": {"from": "Net Sales (USD)", "convert": "to_gbp"},
+    "operating_profit_gbp": {"revenue_minus": "Operating Expenses (USD)", "convert": "to_gbp"},
+    "scope1_tco2e": {"from": "Scope 1 (tCO2e)"},
+    "scope2_tco2e": {"from": "Scope 2 market-based (tCO2e)"},
+    "electricity_kwh": {"from": "Electricity kWh"},
+    "renewable_energy_share": {"from": "Renewable %"}
+  },
+  "scope2_method": "market_based"
+}
+~~~
+
+| Field | Meaning |
+|---|---|
+| `columns.<history column>.from` | Source column for that history field |
+| `columns.<money field>.convert` | `to_gbp` multiplies by `currency.gbp_per_unit` (`eur_to_gbp` with `gbp_per_eur` is the legacy form) |
+| `columns.operating_profit_gbp.revenue_minus` | Derives profit as revenue minus this cost column |
+| `not_reported` | Optional reasons for fields the data lacks; they are stored as 0 and listed |
+
+Required: a date column, revenue, profit (or `revenue_minus`), and emissions (a total, any scopes, or both).
+
+Import steps, each recorded in `ImportedHistory.transforms` and shown on the page:
+
+1. Dates are parsed in any common format and reduced to month starts; rows are sorted. A month appearing twice or an unreadable date is rejected.
+2. Mapped columns are coerced to numbers; a column with no numbers is rejected. Missing months and empty cells are interpolated from neighbouring months. Fewer than 24 months is rejected.
+3. Money is converted to GBP; shares above 1 are read as percentages and divided by 100.
+4. Emissions: with only scopes, the total is their sum (unreported scopes are 0); with a total, unreported scopes take the remainder (Scope 3 first, or all of it as unclassified Scope 3 when no scope is given). A total below the reported scopes is rejected; the identity `total = scope1 + scope2 + scope3` is then checked.
+5. Unreported history fields are 0 with a reason. Missing electricity is estimated from Scope 2 at 0.207 kgCO₂e/kWh (adjusted for the renewable share). 100% renewable supply in a month with Scope 2 emissions is rejected (market-based assumption).
+6. The result is validated as the history frame above.
 
 P0 monthly effective scope2 emissions must be zero when renewable share is 1 under the demonstration assumption; real datasets with nonzero renewable life-cycle factors need a new calibrated assumption/model definition. Positive fleet allocation with `fleet_km=0`, positive gas allocation with `gas_kwh=0`, and positive electricity emissions with `electricity_kwh=0` are invalid inputs for the simulator.
 
-`data/provenance.json` records data kind (`synthetic`/`reported`/`interpolated`), source description, reporting frequency, accounting scope/method, generator config ID, seed, units, and transforms. Raw yearly reported data must not be described as 204 independent monthly observations after interpolation.
+`data/provenance.json` records the demo data's kind (`synthetic`/`reported`/`interpolated`), source description, reporting frequency, accounting scope/method, generator config ID, seed, units, and transforms; uploads are `reported` and carry their file checksum and transforms. Raw yearly reported data must not be described as independent monthly observations after interpolation.
 
 ## 3. Feature training objects and future drivers
 
@@ -201,4 +242,4 @@ Benchmark peer columns and result semantics are defined in [RISK_AND_BENCHMARK_S
 
 Recommendation fields: nullable `strategy_id`, `policy`, `tolerance`, `score`, `risk_status`, and `reason`, plus the additive optional `diagnostics` object (selection pool, risk coverage, thresholds and shortfall; pending review). Unavailable risk produces `risk_status="unavailable"` and the deterministic fallback policy; it never claims conservative selection.
 
-Narrative fields: `status`, `text`, `source_run_id`, `provider`, `is_template`. Tool results: `status`, `tool_name`, `validated_arguments`, `data` (serialized public result or null), and `error` (nullable).
+Narrative fields: `status`, `text`, `source_run_id`, `provider`, `is_template`. Tool results: `status` (`ok`, `error`, `unavailable`), `tool_name`, `validated_arguments`, `data` (a JSON-safe mapping with a `kind`: `baseline`, `simulation`, `optimization`, `risk`, `company_profile`, `action_comparison`, `public_reference` or `forecast_drivers`; null on failure), and `error` (nullable). Each tool's fields are listed in [CHATBOT_IMPLEMENTATION.md](CHATBOT_IMPLEMENTATION.md) §4.
