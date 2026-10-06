@@ -7,11 +7,11 @@
 
 | Slot | Required | Provider |
 |---|---|---|
-| forecast | yes | `src/forecasting/provider.py`: CSV import (`history.py`), WS1 `ml_core.modelling` models cached under `models/ws1/<model_id>/` (`ws1_adapter.py`), baseline and backtest assembly (`baseline.py`) |
+| forecast | yes | `src/forecasting/provider.py`: CSV import (`history.py`), a RandomForest (or the model chosen with `create_services(model=...)`) from `ml_core.modelling` fitted to the canonical history and cached under `models/ws1/<model_id>/` (`ws1_adapter.py`, ~10 s the first time), baseline and backtest assembly (`baseline.py`). `compare_models` scores other models on request only |
 | simulator | yes | `src/actions/provider.py`: the deterministic action engine with the company's assumption file |
 | optimizer | yes | `src/optimization/provider.py`: NSGA-II, shared constraint evaluation, recommendation policy |
 | risk | no | `src/risk/provider.py`: Monte Carlo over the injected simulator |
-| shap | no | `src/explainability/provider.py`: SHAP over WS1's trained tree models |
+| shap | no | `src/explainability/provider.py`: SHAP over the bound forecast's tree models (unavailable for a non-tree model) |
 | benchmark | no | `src/benchmarking/provider.py`: offline peer snapshot (`unavailable` without a compatible peer set) |
 
 A required provider that cannot be built stops startup; the dashboard shows a generic error
@@ -19,9 +19,22 @@ and logs the cause. An optional provider that cannot be built is disabled and it
 recorded in `Services.unavailable`. Nothing falls back to a mock.
 
 `create_services(overrides)` replaces a slot with another instance or disables an optional
-slot with `None`. Only tests use it, through `tests.mocks.make_services`. When the forecast
+slot with `None`. Uploads use it (below), and tests through `tests.mocks.make_services`. When the forecast
 is overridden, the real simulator, risk and benchmark keep their default config files, so a
 baseline is never paired with another company's assumptions.
+
+## Uploaded data
+
+`create_dataset_services(table, mapping)` builds the same `Services` for any monthly CSV:
+
+1. `src/forecasting/mapping.py` suggests which column plays which role (date, revenue, profit or cost,
+   emissions, optional activity); the dashboard's upload step lets the user correct it.
+2. `src/forecasting/history.py` imports the table into the canonical history and records every
+   derivation (currency, percentages, gaps, missing scopes or electricity).
+3. The forecast is fitted to that history; the driver policy follows whichever activities it reports.
+4. `src/actions/calibrate.py` rescales the demo's action assumptions to the company's activity.
+   Actions with nothing to act on get zero share and zero cost; `inactive_actions` detects them,
+   the optimizer keeps them at zero and the page hides them with a note.
 
 ## Analysis pipeline
 

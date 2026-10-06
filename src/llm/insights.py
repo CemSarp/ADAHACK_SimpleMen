@@ -14,6 +14,7 @@ import pandas as pd
 from src.actions.definitions import ACTION_DEFINITIONS
 from src.contracts import validation as val
 from src.contracts.types import ActionAssumptions, ActionConfig, BaselineBundle, SCOPE_COLUMNS
+from src.dashboard.presentation import ACTION_LABELS
 from src.data_sources.public_data import calculate_electricity_scenario, load_company_reference, load_factors
 from src.integration.services import Services
 
@@ -95,7 +96,7 @@ def company_profile(history: pd.DataFrame | None, baseline: BaselineBundle, assu
         "company_id": baseline.company_id,
         "data_kind": baseline.data_kind,
         "data_note": ("Synthetic, illustrative company data (not a real company's records)."
-                      if baseline.data_kind == "synthetic" else f"Data kind: {baseline.data_kind}."),
+                      if baseline.data_kind == "synthetic" else "The company's own uploaded figures."),
         "what_the_scopes_contain": {
             "scope1": {"fleet_fuel_pct": _r(100 * a.ice_fleet_share), "building_gas_pct": _r(100 * a.gas_share)},
             "scope2": "purchased electricity",
@@ -135,6 +136,7 @@ def company_profile(history: pd.DataFrame | None, baseline: BaselineBundle, assu
     not_reported = [label for col, label in ACTIVITY_COLUMNS.items() if float(last12[col].abs().sum()) == 0]
     if int(last12["employees"].abs().sum()) == 0:
         not_reported.append("employees")
+    not_reported += [f"scope {c[5]} emissions" for c in SCOPE_COLUMNS if float(last12[c].abs().sum()) == 0]
     hist["not_reported_in_data"] = not_reported
     out["history"] = hist
     out["forecast_vs_last_12_months_pct"] = {
@@ -159,7 +161,7 @@ def compare_actions(baseline: BaselineBundle, services: Services) -> dict:
         cost = a.costs[d.name]
         rows.append({
             "action": d.name,
-            "label": d.label,
+            "label": ACTION_LABELS[d.name],  # the same names as the dashboard
             "what_it_does": PLAIN_ACTIONS[d.name],
             "has_effect_for_this_company": cut > 1e-6,
             "alone_at_full_adoption_over_horizon": {

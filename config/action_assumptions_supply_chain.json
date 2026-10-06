@@ -2,7 +2,7 @@
   "assumptions_id": "supply-chain-actions-v1",
   "version": "1.0.0",
   "is_calibrated": false,
-  "description": "ILLUSTRATIVE action assumptions for the CSV supply-chain company (WS4 integration draft; WS2 review required). Tariffs and factors come from the last 12 CSV months converted at the configured 0.85 GBP/EUR: diesel 0.2243 l/km x 1.72 EUR/l -> 0.328 GBP/km; electricity 0.165 GBP/kWh; grid 0.2295 kg/kWh. Scope1 is fleet diesel (2.74 kg CO2e per litre in the CSV), so gas_share = 0; the CSV reports no gas, business travel or cloud activity, so those buckets and their action costs are zero. Capex/opex and reduction coefficients are placeholders, not company economics.",
+  "description": "ILLUSTRATIVE assumptions for the demo logistics company. Prices and factors come from its last 12 months of data (EUR converted at 0.85 GBP/EUR): diesel fleet 0.328 GBP/km, electricity 0.165 GBP/kWh, grid 0.2295 kgCO2e/kWh. Its fleet runs on diesel, and it reports no gas, business travel or cloud use, so those actions have nothing to act on. Investment, running costs and reduction limits are placeholders, not company economics.",
   "gas_share": 0.0,
   "ice_fleet_share": 1.0,
   "travel_share": 0.0,

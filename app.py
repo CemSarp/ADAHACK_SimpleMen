@@ -1,39 +1,45 @@
-"""CarbonOpt AI — Streamlit entry point.
+"""CarbonOpt — Streamlit entry point.
 
 Run from the repository root:  python -m streamlit run app.py
 
-The configured company CSV feeds forecasting, simulation, optimization, risk
-and benchmarking. Computational services never fall back to test doubles.
+The demo company (config/integration.json) or an uploaded monthly CSV feeds forecasting,
+simulation, optimization, risk and benchmarking. Computational services never fall back
+to test doubles.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 
 import streamlit as st
+from streamlit.delta_generator import DeltaGenerator
 
 from src.contracts.errors import CarbonOptError
 from src.contracts.types import AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig
-from src.dashboard import components
+from src.dashboard import components, data_panel
 from src.dashboard.chat_ui import render_chat
-from src.dashboard.grounding_panel import render_grounding_panel
+from src.dashboard.presentation import short_gbp
 from src.dashboard.state import DashboardState
 from src.dashboard.theme import apply_theme
-from src.integration.services import Services, create_services
+from src.integration.services import Services, create_dataset_services, create_services
 
 logger = logging.getLogger(__name__)
+TOLERANCE_LABELS = {"conservative": "Cautious", "balanced": "Balanced", "aggressive": "Bold"}
 
 
-@st.cache_resource(show_spinner=False)
-def _services() -> Services:
+@st.cache_resource(show_spinner=False, max_entries=6)
+def _demo_services(model: str | None) -> Services:
     # Providers are stateless and hold no session or credential data, so one
-    # instance per configuration can be shared across sessions.
-    return create_services()
+    # instance per configuration and forecasting model can be shared across sessions.
+    return create_services(model=model)
 
 
-def company_and_defaults(services: Services) -> tuple[str, dict]:
-    """Use the same company configuration as the forecast and action services."""
-    return services.forecast.company_id, dict(services.forecast.config.dashboard_defaults)
+@st.cache_resource(show_spinner=False, max_entries=8)
+def _upload_services(data: bytes, mapping: str, name: str, model: str | None) -> Services:
+    return create_dataset_services(data_panel.read_table(data), json.loads(mapping), name=name,
+                                   sha256=hashlib.sha256(data).hexdigest(), model=model)
 
 
 def apply_defaults(company: str, defaults: dict) -> None:
@@ -53,50 +59,41 @@ def _is_dark() -> bool:
     return getattr(theme, "type", None) == "dark"
 
 
-def sidebar_inputs(services: Services) -> AnalysisRequest:
+def sidebar_inputs(services: Services) -> tuple[DeltaGenerator, DeltaGenerator, AnalysisRequest]:
     caps = services.capabilities
-    company, defaults = company_and_defaults(services)
-    apply_defaults(company, defaults)
-    st.sidebar.markdown("### Planning goals")
-    if len(caps.supported_horizons) == 1:
-        horizon = caps.supported_horizons[0]
-        st.sidebar.caption(f"Planning period: {horizon} months")
-    else:
-        horizon = st.sidebar.selectbox("Planning period (months)", caps.supported_horizons, key="co_widget_horizon")
-    budget = st.sidebar.number_input(
-        "Implementation budget (£)", min_value=0.0, step=10_000.0, format="%.0f",
-        key="co_widget_budget", help="Gross outlay over the whole horizon: capex + incremental opex. Savings excluded.",
-    )
-    min_profit = st.sidebar.number_input(
-        "Minimum cumulative operating profit (£)", step=10_000.0, format="%.0f",
-        key="co_widget_profit", help="Floor on operating profit summed over the horizon (not annual). May be negative.",
-    )
-    target_pct = st.sidebar.slider(
-        "Minimum CO₂ reduction vs baseline (%)", min_value=0, max_value=100, step=1, key="co_widget_target",
-        help="Strategy horizon emissions compared with baseline horizon emissions.",
-    )
-    with st.sidebar.expander("Search depth"):
-        st.caption("A larger search explores more action mixes and takes longer.")
-        max_evals = int(st.number_input("Action mixes to evaluate", min_value=16, max_value=10_000, step=64,
-                                        key="co_widget_evals"))
+    company = services.forecast.company_id
+    apply_defaults(company, services.forecast.config.dashboard_defaults)
+    sb = st.sidebar
+    sb.markdown("### Goals")
+    horizon = caps.supported_horizons[0]
+    sb.caption(f"Planning over the next {horizon} months.")
+    budget = sb.number_input("Budget for new actions (£)", min_value=0.0, step=10_000.0, format="%.0f",
+                             key="co_widget_budget",
+                             help="Up-front investment plus extra running costs over the period. Savings are not deducted.")
+    budget_note = sb.empty()  # filled once the forecast is known
+    min_profit = sb.number_input("Lowest acceptable operating profit (£)", step=10_000.0, format="%.0f",
+                                 key="co_widget_profit", help="Total over the period, not per year. May be negative.")
+    profit_note = sb.empty()
+    target_pct = sb.slider("Cut emissions by at least (%)", min_value=0, max_value=100, step=1, key="co_widget_target",
+                           help="Compared with the forecast without new actions.")
+    with sb.expander("Search depth"):
+        st.caption("Trying more mixes finds slightly better plans and takes longer.")
+        max_evals = int(st.number_input("Mixes to try", min_value=16, max_value=10_000, step=64, key="co_widget_evals"))
 
-    st.sidebar.markdown("### Supporting analysis")
-    risk_on = st.sidebar.checkbox("Assess uncertainty", key="co_widget_risk", disabled=not caps.risk_available,
-                                  help="Estimate how often a plan meets your goals when action assumptions vary.")
-    tolerance = "balanced"
-    trials = 1000
+    sb.markdown("### Also check")
+    risk_on = sb.checkbox("Uncertainty", key="co_widget_risk", disabled=not caps.risk_available,
+                          help="How often each plan still meets your goals when costs and effects vary "
+                               "(Monte Carlo simulation).")
+    tolerance, trials = "balanced", 1000
     if risk_on and caps.risk_available:
-        tolerance = st.sidebar.radio("Risk tolerance", ("conservative", "balanced", "aggressive"), index=1,
-                                     key="co_widget_tolerance", horizontal=True)
-        with st.sidebar.expander("Uncertainty detail"):
-            trials = int(st.number_input("Uncertainty trials", min_value=100, max_value=5000, step=100,
-                                         key="co_widget_trials"))
-    shap_on = False
-    if caps.shap_available_targets:
-        shap_on = st.sidebar.checkbox("Explain the forecast", key="co_widget_shap")
-    bench_on = st.sidebar.checkbox("Compare with peers", key="co_widget_bench", disabled=not caps.benchmark_available)
+        tolerance = sb.radio("Risk appetite", tuple(TOLERANCE_LABELS), index=1, key="co_widget_tolerance",
+                             horizontal=True, format_func=TOLERANCE_LABELS.get)
+        with sb.expander("Uncertainty detail"):
+            trials = int(st.number_input("Trials per plan", min_value=100, max_value=5000, step=100, key="co_widget_trials"))
+    shap_on = sb.checkbox("Forecast drivers", key="co_widget_shap") if caps.shap_available_targets else False
+    bench_on = sb.checkbox("Peers", key="co_widget_bench", disabled=not caps.benchmark_available)
 
-    request = AnalysisRequest(
+    return budget_note, profit_note, AnalysisRequest(
         company_id=company,
         horizon_months=int(horizon),
         constraints=ConstraintConfig(
@@ -109,71 +106,68 @@ def sidebar_inputs(services: Services) -> AnalysisRequest:
         benchmark_enabled=bool(bench_on and caps.benchmark_available),
         explanation_enabled=bool(shap_on and caps.shap_available_targets),
     )
-    return request
+
+
+def goal_limits(state: DashboardState, services: Services, request: AnalysisRequest, budget_note: DeltaGenerator,
+                profit_note: DeltaGenerator) -> None:
+    """What the budget and profit floor accept, sized to this company's forecast."""
+    c = request.constraints
+    if state.baseline is None:
+        budget_note.caption(short_gbp(c.budget_gbp))
+        profit_note.caption(short_gbp(c.min_total_profit_gbp))
+        return
+    budget_note.caption(f"{short_gbp(c.budget_gbp)} · £0 or more; above "
+                        f"{short_gbp(components.full_mix_cost(state, services))} makes no difference (every action "
+                        "at full take-up).")
+    profit_note.caption(f"{short_gbp(c.min_total_profit_gbp)} · Any amount, can be negative; "
+                        f"{short_gbp(state.baseline.totals['operating_profit_gbp'])} without new actions.")
 
 
 def main() -> None:
-    st.set_page_config(page_title="CarbonOpt AI", page_icon="🌱", layout="wide")
+    st.set_page_config(page_title="CarbonOpt", page_icon=":material/eco:", layout="wide")
     dark = _is_dark()
     apply_theme(dark)
-    st.title("CarbonOpt AI")
-    st.caption("Plan emissions reductions, compare costs and profit, and choose an action mix that meets your goals.")
 
+    source = data_panel.source_selector()
+    dataset = data_panel.confirmed() if source == data_panel.OWN else None
+    if source == data_panel.OWN and dataset is None:
+        components.header(None, None)
+        data_panel.upload_step()
+        return
+    if dataset is not None:
+        data_panel.sidebar_summary(dataset)
+
+    model = st.session_state.get("co_widget_forecast_model")
+    model = None if model in (None, "auto") else model
     try:
-        services = _services()
+        with st.spinner("Loading the company data…"):
+            services = (_demo_services(model) if dataset is None
+                        else _upload_services(dataset["bytes"], data_panel.mapping_json(dataset), dataset["name"], model))
     except (CarbonOptError, ImportError, OSError, ValueError):
         logger.exception("Cannot initialize company analysis services")
-        st.error("Company analysis could not be loaded. Please contact the application administrator.", icon="🛑")
+        st.error("Company analysis could not be loaded. Please contact the application administrator.")
         st.stop()
 
     state = DashboardState(st.session_state)
     state.sync_services(services)
-    baseline_summary = st.sidebar.container()
-    request = sidebar_inputs(services)
-    with st.spinner("Preparing your forecast. The first analysis may take a few minutes…"):
+    budget_note, profit_note, request = sidebar_inputs(services)
+    with st.spinner("Fitting the forecast. The first time for new data or a new model takes a few seconds…"):
         state.ensure_baseline(request, services)
-    with baseline_summary:
-        st.markdown("**Baseline · before new actions**")
-        if state.baseline is not None:
-            monthly = state.baseline.monthly
-            st.caption(f"{monthly['timestamp'].min():%b %Y} – {monthly['timestamp'].max():%b %Y}")
-            st.markdown(
-                "| Forecast | Total |\n| :--- | ---: |\n"
-                f"| Emissions | **{monthly['total_co2e_tco2e'].sum():,.0f} tCO₂e** |\n"
-                f"| Revenue | **£{monthly['revenue_gbp'].sum() / 1_000_000:,.2f}m** |\n"
-                f"| Profit (EBITDA proxy) | **£{monthly['operating_profit_gbp'].sum() / 1_000_000:,.2f}m** |"
-            )
-            with st.expander("Data source"):
-                st.caption(f"Source: {services.forecast.config.input_csv}. "
-                           f"Data type: {state.baseline.data_kind}. Emissions and profit are model forecasts; "
-                           "revenue follows the configured seasonal growth projection. "
-                           "Profit uses EBITDA as a proxy. EUR values are converted using the configured "
-                           "illustrative exchange rate. These figures are separate from the Wincanton reference.")
-        else:
-            st.caption("Baseline figures are unavailable until the forecast loads.")
     state.sync_inputs(request, services)
-    optimize = st.sidebar.button("Optimize", type="primary", width="stretch", disabled=state.baseline is None)
-    if optimize:
-        with st.spinner("Optimizing…"):
+    goal_limits(state, services, request, budget_note, profit_note)
+    if st.sidebar.button("Find plans", type="primary", width="stretch", disabled=state.baseline is None,
+                         icon=":material/search:"):
+        with st.spinner("Searching for plans…"):
             state.run_optimize(request, services)
 
-    render_grounding_panel()
-    components.company_context(state)
+    components.header(services, state)
+    components.baseline_section(state, services, dark)
     if state.baseline is not None:
-        with st.container(border=True):
-            components.optimization_panel(state, dark)
-            components.selected_strategy_panel(state)
-        with st.container(border=True):
-            components.whatif_panel(state, services, request)
-        with st.container(border=True):
-            components.monthly_panel(state, dark)
-        with st.container(border=True):
-            components.optional_panels(state, services, request, dark)
-        with st.container(border=True):
-            components.assumptions_panel(services.assumptions)
-        components.analysis_download(state)
-    # Reserve room so the floating bubble never covers the Optimize button.
-    st.sidebar.html('<div style="height:88px"></div>')
+        components.plans_section(state, services, request, dark)
+        components.whatif_section(state, services, request, dark)
+        components.confidence_section(state, services, request, dark)
+        components.timing_section(state, dark)
+        components.assumptions_section(services.assumptions, state)
     render_chat(state, services, request, dark=dark)
 
 

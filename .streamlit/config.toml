@@ -1,10 +1,38 @@
+# Editorial "annual report" look: warm paper, ink text, one deep-green accent, serif headings.
 [theme]
-base = "dark"
-primaryColor = "#39ff88"
-backgroundColor = "#0b0f14"
-secondaryBackgroundColor = "#10161d"
-textColor = "#d6ffe6"
-font = "sans-serif"
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+headingFont = "Newsreader:https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap"
+codeFont = "IBM Plex Mono:https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+headingFontWeights = [500, 500, 500, 600, 600, 600]
+baseRadius = "0.25rem"
+buttonRadius = "0.25rem"
+showSidebarBorder = true
+
+[theme.light]
+primaryColor = "#1d5c45"
+backgroundColor = "#f7f4ee"
+secondaryBackgroundColor = "#efeae0"
+textColor = "#1c1b18"
+borderColor = "#ddd6c8"
+linkColor = "#1d5c45"
+chartCategoricalColors = ["#1d5c45", "#b4622d", "#8a867c", "#3d6f8f", "#a8432f"]
+
+[theme.light.sidebar]
+backgroundColor = "#efeae0"
+secondaryBackgroundColor = "#e6e0d3"
+
+[theme.dark]
+primaryColor = "#6fbf98"
+backgroundColor = "#161513"
+secondaryBackgroundColor = "#211f1b"
+textColor = "#ece8df"
+borderColor = "#38352f"
+linkColor = "#6fbf98"
+chartCategoricalColors = ["#6fbf98", "#e0915a", "#8f8a80", "#7fa9c6", "#e07a62"]
+
+[theme.dark.sidebar]
+backgroundColor = "#1b1a17"
+secondaryBackgroundColor = "#26241f"
 
 [client]
 toolbarMode = "minimal"

@@ -18,7 +18,7 @@ from src.contracts.errors import ContractValidationError, RiskError
 from src.contracts.identity import config_from_row
 from src.contracts.types import ActionConfig, AnalysisRequest, ConstraintConfig, OptimizerConfig, RiskConfig
 from src.dashboard.state import DashboardState
-from src.forecasting.baseline import project_drivers
+from src.forecasting.baseline import driver_policy_for, project_drivers
 from src.forecasting.history import REPO_ROOT, load_company_history
 from src.forecasting.ws1_adapter import identity_for, model_id_for
 from src.integration import cache_keys, create_services, run_analysis
@@ -71,18 +71,27 @@ def test_existing_csv_loads_and_validates():
 
 
 @pytest.mark.parametrize("mutate,match", [
-    (lambda d: d.drop(index=10), "contiguous"),
-    (lambda d: pd.concat([d, d.tail(1)]), "duplicate"),
-    (lambda d: d.assign(scope1_tco2e=d["scope1_tco2e"].where(d.index != 5, np.nan)), "non-finite"),
+    (lambda d: pd.concat([d, d.tail(1)]), "appear twice"),
     (lambda d: d.assign(scope1_tco2e=d["scope1_tco2e"] + 1.0), "scope1 \\+ scope2"),
-    (lambda d: d.iloc[::-1], "ascending"),
     (lambda d: d.drop(columns=["scope3_tco2e"]), "missing columns"),
 ])
-def test_csv_problems_are_rejected_not_repaired(tmp_path, mutate, match):
+def test_inconsistent_csv_is_rejected(tmp_path, mutate, match):
     bad = tmp_path / "bad.csv"
     mutate(pd.read_csv(REPO_ROOT / CSV)).to_csv(bad, index=False)
     with pytest.raises(ContractValidationError, match=match):
         load_company_history(bad, IMPORT)
+
+
+@pytest.mark.parametrize("mutate,note", [
+    (lambda d: d.drop(index=10), "1 missing months filled by interpolation"),
+    (lambda d: d.iloc[::-1], None),  # row order does not matter
+])
+def test_gaps_and_order_are_repaired_with_a_note(tmp_path, mutate, note):
+    path = tmp_path / "gappy.csv"
+    mutate(pd.read_csv(REPO_ROOT / CSV)).to_csv(path, index=False)
+    imported = load_company_history(path, IMPORT)
+    assert len(imported.history) == 300 and imported.history["timestamp"].is_monotonic_increasing
+    assert note is None or note in imported.transforms
 
 
 # 2-3. WS1 ---------------------------------------------------------------------- #
@@ -104,23 +113,26 @@ def test_ws1_forecast_values_come_from_ws1_best_model(services):
     art = services.forecast.artifacts()
     b = services.forecast.get_baseline(company_id=services.forecast.company_id, horizon_months=12)
     em = art.best_forecast("emissions")["prediction"].to_numpy()
-    pr = art.best_forecast("profit")["prediction"].to_numpy() * 0.85
+    pr = art.best_forecast("profit")["prediction"].to_numpy()  # already GBP: WS1 fits the canonical history
     assert np.allclose(b.monthly["total_co2e_tco2e"], em) and np.allclose(b.monthly["operating_profit_gbp"], pr)
     trailing = b.monthly  # scopes reconcile to the WS1 total
     assert np.allclose(trailing[["scope1_tco2e", "scope2_tco2e", "scope3_tco2e"]].sum(axis=1), em)
 
 
 def test_backtest_is_leakage_safe_at_the_origin():
-    from ml_core.modelling import TARGETS, DirectTreeForecaster, build_supervised, prepare_data
+    from ml_core.modelling import DirectTreeForecaster, build_supervised
     from sklearn.ensemble import RandomForestRegressor
 
-    data = prepare_data(load_company_history(CSV, IMPORT).raw)
+    from src.forecasting.ws1_adapter import model_frame, target_specs
+
+    imported = load_company_history(CSV, IMPORT)
+    data = model_frame(imported)
     origin = 250
     history = data.iloc[: origin + 1]
     changed = data.copy()
     numeric = changed.select_dtypes("number").columns
     changed.loc[origin + 1:, numeric] = changed.loc[origin + 1:, numeric] * 3.0  # rewrite the future
-    spec = TARGETS["emissions"]
+    spec = target_specs(imported.history)["emissions"]
     for h in (1, 12):
         X1, _, _, _ = build_supervised(history, spec, h)
         X2, _, _, _ = build_supervised(changed.iloc[: origin + 1], spec, h)
@@ -133,7 +145,8 @@ def test_backtest_is_leakage_safe_at_the_origin():
 
 def test_driver_projection_uses_only_history():
     h = load_company_history(CSV, IMPORT).history
-    policy = IntegrationConfig.load().driver_policy
+    policy = driver_policy_for(h, IntegrationConfig.load().driver_policy)
+    assert policy["flow_columns"] == ["revenue_gbp", "electricity_kwh", "fleet_km"]  # what this CSV reports
     a = project_drivers(h, 12, policy)
     b = project_drivers(pd.concat([h, h.tail(0)]), 12, policy)
     pd.testing.assert_frame_equal(a, b)

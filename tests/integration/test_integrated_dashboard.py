@@ -26,7 +26,7 @@ def _optimize(at, *, risk: bool) -> None:
     if risk:
         at.checkbox(key="co_widget_risk").check().run()
         at.number_input(key="co_widget_trials").set_value(200).run()
-    [b for b in at.button if b.label == "Optimize"][0].click().run()
+    [b for b in at.button if b.label == "Find plans"][0].click().run()
     assert not at.exception, [e.message for e in at.exception]
 
 
@@ -35,7 +35,7 @@ def test_real_mode_uses_company_defaults(app):
     assert app.number_input(key="co_widget_profit").value == 30_000_000.0
     assert app.slider(key="co_widget_target").value == 10
     captions = " ".join(_texts(app.caption))
-    assert "Synthetic data" in captions
+    assert app.session_state["cos_baseline"].data_kind == "synthetic"
     assert app.session_state["cos_baseline"].company_id == "supply-chain-demo-co"
 
 
@@ -58,7 +58,7 @@ def test_optimize_risk_tolerance_and_scenarios(app):
 
 def test_whatif_load_and_slider_on_real_engine(app):
     _optimize(app, risk=False)
-    [b for b in app.button if b.label == "Load selected strategy"][0].click().run()
+    [b for b in app.button if b.label == "Start from the selected plan"][0].click().run()
     assert "Matches the selected plan." in _texts(app.caption)
     app.slider(key="co_slider_ev_adoption").set_value(0.9).run()
     assert not app.exception
@@ -68,4 +68,15 @@ def test_whatif_load_and_slider_on_real_engine(app):
 def test_infeasible_request_shows_no_recommendation(app):
     app.number_input(key="co_widget_budget").set_value(0.0).run()
     _optimize(app, risk=False)
-    assert any("No feasible recommendation found" in e for e in _texts(app.error))
+    assert any("No plan met all three goals" in e for e in _texts(app.error))
+    hints = " ".join(_texts(app.markdown))
+    assert "Raise the budget to about £" in hints and "Search depth" in hints
+
+
+def test_forecast_drivers_keep_the_top_inputs(app):
+    app.checkbox(key="co_widget_shap").check().run()
+    _optimize(app, risk=False)
+    topk = app.slider(key="co_widget_topk")
+    topk.set_value(3).run()
+    assert not app.exception, [e.message for e in app.exception]
+    assert any(c.startswith("The top 3 inputs carry") for c in _texts(app.caption))

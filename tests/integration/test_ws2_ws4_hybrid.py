@@ -86,7 +86,8 @@ def test_real_optimizer_uses_the_bound_real_simulator(request_demo):
                                                                   "simulator": simulator})
     result = run_analysis(request_demo, services=services)
     diagnostics = result.optimization.diagnostics
-    assert simulator.calls == diagnostics["unique_count"] + diagnostics["revalidated_pareto_count"]
+    assert simulator.calls == (diagnostics["unique_count"] + diagnostics["revalidated_pareto_count"]
+                               + diagnostics["probe_count"])
     assert diagnostics["simulator_providers"] == ["action-engine"]
     assert diagnostics["solver"] == "pymoo.NSGA2" and diagnostics["evaluated_count"] <= SEARCH.max_evaluations
     assert {s.provenance.provider for s in result.optimization.strategies.values()} == {"action-engine"}

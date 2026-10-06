@@ -24,7 +24,7 @@ def start() -> AppTest:
 
 
 def optimize(at):
-    [b for b in at.button if b.label == "Optimize"][0].click().run()
+    [b for b in at.button if b.label == "Find plans"][0].click().run()
     assert not at.exception
 
 

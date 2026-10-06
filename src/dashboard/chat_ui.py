@@ -1,4 +1,4 @@
-"""Floating assistant: circular bottom-left bubble and an expandable panel.
+"""Floating assistant: circular bottom-right bubble and an expandable panel.
 
 Built from documented Streamlit pieces: st.container(key=...) (Streamlit adds
 the CSS class `st-key-<key>`), st.button, st.chat_message, st.chat_input and
@@ -24,7 +24,7 @@ from src.llm.summaries import gbp, pct, tonnes
 
 from .chat_state import SUGGESTIONS, ChatState
 from .state import DashboardState
-from .theme import BG, GREEN, INK, MUTED
+from .theme import palette
 
 logger = logging.getLogger(__name__)
 
@@ -39,23 +39,22 @@ SIZE_ICONS = {"compact": ":material/close_fullscreen:", "large": ":material/open
 
 def _css(dark: bool, size: str) -> str:
     # surface, text, muted text, edge, accent, raised fill (chips/user bubbles), input field
-    bg, fg, muted, border, accent, raised, field = (
-        ("#151e27", INK, MUTED, "#2f4a3c", GREEN, "#1e2b36", BG) if dark else
-        ("#ffffff", "#0b0b0b", "#5b6168", "#b9c4bd", "#1a7f45", "#eef4f0", "#f7f9f8"))
+    p = palette(dark)
+    bg, fg, muted, border, accent = ("#211f1b" if dark else "#fffdf8"), p.text, p.text_secondary, p.axis, p.plan
+    raised, field = ("#2a2823", p.surface) if dark else ("#efeae0", p.surface)
     width = SIZES[size][0]
     return f"""<style>
-.st-key-{LAUNCHER_KEY} {{ position: fixed; left: 16px; bottom: 16px; z-index: 1000100; width: auto; }}
+.st-key-{LAUNCHER_KEY} {{ position: fixed; right: 16px; left: auto; bottom: 16px; z-index: 1000100; width: auto; }}
 .st-key-{LAUNCHER_KEY} button {{ width: 56px; height: 56px; min-height: 56px; border-radius: 50%; padding: 0;
-  box-shadow: 0 2px 10px rgba(0,0,0,.3); font-size: 1.5rem; }}
-.st-key-{PANEL_KEY} {{ position: fixed; left: 16px; bottom: 84px; z-index: 1000100; width: min({width}px, calc(100vw - 32px));
-  max-height: calc(100vh - 108px); overflow-y: auto; padding: 12px 14px; border-radius: 14px; background: {bg}; color: {fg};
-  border: 1px solid {border}; box-shadow: 0 10px 36px rgba(0,0,0,.45); }}
+  box-shadow: 0 2px 8px rgba(0,0,0,.18); font-size: 1.5rem; }}
+.st-key-{PANEL_KEY} {{ position: fixed; right: 16px; left: auto; bottom: 84px; z-index: 1000100; width: min({width}px, calc(100vw - 32px));
+  max-height: calc(100vh - 108px); overflow-y: auto; padding: 12px 14px; border-radius: 6px; background: {bg}; color: {fg};
+  border: 1px solid {border}; box-shadow: 0 8px 28px rgba(0,0,0,.18); }}
 .st-key-{PANEL_KEY} [data-testid="stCaptionContainer"] {{ color: {muted}; }}
 /* Header and status separated from the conversation by one divider line. */
 .st-key-cc_head {{ border-bottom: 1px solid {border}; padding-bottom: 8px; margin-bottom: 2px; }}
 /* The message box: accent outline on a darker field so it is easy to find. */
-.st-key-{PANEL_KEY} [data-testid="stChatInput"] {{ border: 1.5px solid {accent}; border-radius: 12px; background: {field};
-  box-shadow: 0 0 0 3px {accent}22; }}
+.st-key-{PANEL_KEY} [data-testid="stChatInput"] {{ border: 1px solid {accent}; border-radius: 6px; background: {field}; }}
 .st-key-{PANEL_KEY} [data-testid="stChatInput"] textarea {{ color: {fg}; }}
 .st-key-{PANEL_KEY} [data-testid="stChatInput"] textarea::placeholder {{ color: {muted}; opacity: 1; }}
 .st-key-{PANEL_KEY} button {{ min-height: 32px; padding: 2px 10px; font-size: 0.85rem; }}
@@ -68,8 +67,8 @@ def _css(dark: bool, size: str) -> str:
 .st-key-{PANEL_KEY} [class*="st-key-cc_card_"] {{ background: {raised}; border-left: 3px solid {accent};
   border-radius: 8px; padding: 10px 12px; }}
 @media (max-width: 640px) {{
-  .st-key-{PANEL_KEY} {{ left: 8px; width: calc(100vw - 16px); bottom: 76px; max-height: calc(100vh - 92px); }}
-  .st-key-{LAUNCHER_KEY} {{ left: 8px; bottom: 8px; }}
+  .st-key-{PANEL_KEY} {{ right: 8px; width: calc(100vw - 16px); bottom: 76px; max-height: calc(100vh - 92px); }}
+  .st-key-{LAUNCHER_KEY} {{ right: 8px; bottom: 8px; }}
 }}
 </style>"""
 
@@ -90,7 +89,7 @@ def _metric_lines(m: Mapping[str, Any]) -> str:
 
 
 DATA_CARD_TITLES = {"company_profile": "Company data used", "action_comparison": "Action comparison used",
-                    "public_reference": "Wincanton reference used"}
+                    "public_reference": "Wincanton reference used", "forecast_drivers": "Forecast drivers used"}
 ACTION_CARD_KINDS = ("baseline", "simulation", "optimization", "risk")
 
 
@@ -124,6 +123,13 @@ def _data_card(kind: str, data: Mapping[str, Any]) -> None:
                 lines.append(f"- {r['label']}: no effect for this company")
         st.markdown("\n".join(lines))
         st.caption("Each action alone at full adoption over the horizon. Costs are illustrative assumptions.")
+    elif kind == "forecast_drivers":
+        for label, t in data["targets"].items():
+            st.markdown(f"**{label.replace('_', ' ').capitalize()}** · top {len(t['top_inputs'])} carry "
+                        f"{t['top_k_share_pct']}%\n" + "\n".join(
+                            f"- {r['input']}: {r['share_pct']}% ({'raises' if r['pushes_forecast'] == 'up' else 'lowers'})"
+                            for r in t["top_inputs"]))
+        st.caption("Explains the forecast without new actions, not the plans.")
     elif kind == "public_reference":
         d = data["derived_from_figures"]
         st.markdown(f"**{data['company']}** · {data['period']} · [source]({data['source']['url']})\n"
@@ -153,6 +159,9 @@ def render_card(card: Mapping[str, Any], *, stale: bool, dash: DashboardState) -
             st.markdown(f"**Baseline forecast** · {data['period']}{mock}\n"
                         f"- Emissions: **{tonnes(t['total_co2e_tco2e'])}**\n"
                         f"- Operating profit: **{gbp(t['operating_profit_gbp'])}** · revenue {gbp(t['revenue_gbp'])}")
+            model = (data.get("forecast") or {}).get("model")
+            if model:
+                st.caption(f"Model: {model}")
         elif kind == "simulation":
             st.markdown(f"**What-if preview**{mock}\n" + _metric_lines(data["metrics"]))
             names = {"renewable_energy": "Renewable", "ev_adoption": "EV"}
@@ -173,7 +182,10 @@ def render_card(card: Mapping[str, Any], *, stale: bool, dash: DashboardState) -
             st.markdown(f"**Optimization preview** · budget {gbp(c['budget_gbp'])}, profit floor "
                         f"{gbp(c['min_total_profit_gbp'])}, target {pct(c['min_co2_reduction_ratio'])}{mock}")
             if data["status"] != "ok":
-                st.warning("No feasible plan found within the search budget.", icon="🚫")
+                st.warning("No plan met all goals.")
+                h = data.get("how_to_meet_goals") or {}
+                if h.get("budget_gbp_needed") is not None:
+                    st.caption(f"A budget of about {gbp(h['budget_gbp_needed'])} would meet them.")
             else:
                 r = data["recommended"]
                 st.markdown(f"Recommended action mix from {data['pareto_count']} frontier plans\n" + _metric_lines(r["metrics"]))
@@ -213,7 +225,7 @@ def _render_message(m: Mapping[str, Any], *, context: AnalysisContext | None, da
         if m["error"]:
             e = m["error"]
             logger.error("Assistant %s: %s", e['type'], e['message'])
-            st.error("The assistant could not answer this request. Please try again.", icon="🛑")
+            st.error("The assistant could not answer this request. Please try again.")
             st.caption("Your message has been kept.")
             st.button("Retry", key=f"retry_{m['id']}", on_click=chat.retry, args=(m["turn"],),
                       help="Re-runs this message; completed tools are not executed again.")
@@ -254,7 +266,7 @@ def render_chat(dash: DashboardState, services: Services, request: AnalysisReque
             if config_error:
                 logger.error("Assistant configuration: %s", config_error)
                 st.error("The assistant is currently unavailable. Please contact the application administrator.",
-                         icon="🛑", width="stretch")
+                         width="stretch")
             elif provider is not None:
                 hosts = {"lmstudio": "LM Studio", "ollama": "Ollama"}
                 label = ("Guided assistant · recognises preset questions" if provider.info.is_mock else

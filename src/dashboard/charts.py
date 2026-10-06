@@ -1,12 +1,10 @@
 """Plotly figure builders. Inputs are public contract objects/frames only.
 
-Presentation transformations only: unit labels, ratio->percent, sign for
-display, ID joins. No emissions, accounting, feasibility, Pareto or risk logic
-lives here, so swapping mock for real providers needs no chart change.
+Presentation transformations only: unit labels, ratio->percent, sign for display, ID
+joins. No emissions, accounting, feasibility, Pareto or risk logic lives here.
 
-Entity colors are fixed across charts (validated with the dataviz palette
-validator): baseline = neutral gray (reference; also dotted), selected strategy
-= blue, manual what-if = orange. Every chart has a single y-axis.
+Entity colours are fixed across charts: baseline = warm grey (also dashed), plans =
+deep green, the user's own mix = burnt orange. Every chart has a single y-axis.
 """
 
 from __future__ import annotations
@@ -18,8 +16,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from .theme import ACCENT, BG, BODY_FONT, GREEN, GRID, INK, MUTED
-
 from src.contracts.types import (
     BaselineBundle,
     BenchmarkResult,
@@ -29,52 +25,26 @@ from src.contracts.types import (
     SimulationResult,
 )
 
+from .presentation import feature_label, model_name, shap_importance
+from .theme import SANS, Palette, palette
+
 TARGET_LABELS = {"total_co2e_tco2e": "Total emissions (tCO₂e)", "operating_profit_gbp": "Operating profit (GBP)"}
 
 
-@dataclass(frozen=True)
-class Theme:
-    surface: str
-    text: str
-    text_secondary: str
-    muted: str
-    grid: str
-    axis: str
-    baseline: str
-    selected: str
-    whatif: str
-    actual: str
-    positive: str
-    negative: str
-
-
-LIGHT = Theme(
-    surface="#fcfcfb", text="#0b0b0b", text_secondary="#52514e", muted="#898781", grid="#e1e0d9", axis="#c3c2b7",
-    baseline="#898781", selected="#2a78d6", whatif="#eb6834", actual="#0b0b0b", positive="#2a78d6", negative="#e34948",
-)
-DARK = Theme(
-    surface=BG, text=INK, text_secondary=MUTED, muted=MUTED, grid=GRID, axis=GRID,
-    baseline=MUTED, selected=ACCENT, whatif="#f0a85b", actual=GREEN, positive=GREEN, negative="#ff7387",
-)
-
-
-def theme_for(dark: bool) -> Theme:
-    return DARK if dark else LIGHT
-
-
-def _layout(fig: go.Figure, t: Theme, *, height: int, x_title: str | None = None, y_title: str | None = None) -> go.Figure:
+def _layout(fig: go.Figure, p: Palette, *, height: int, x_title: str | None = None, y_title: str | None = None) -> go.Figure:
     fig.update_layout(
         height=height,
-        margin=dict(l=8, r=8, t=36, b=8),
+        margin=dict(l=4, r=4, t=36, b=4),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family=BODY_FONT, color=t.text_secondary, size=14),
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, font=dict(color=t.text_secondary)),
-        hoverlabel=dict(font=dict(family='system-ui, -apple-system, "Segoe UI", sans-serif')),
+        font=dict(family=SANS, color=p.text_secondary, size=13),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0, font=dict(color=p.text_secondary)),
+        hoverlabel=dict(font=dict(family=SANS)),
         hovermode="x unified",
     )
-    axis = dict(gridcolor=t.grid, linecolor=t.axis, zerolinecolor=t.axis, tickfont=dict(color=t.muted), title_font=dict(color=t.text_secondary))
-    fig.update_xaxes(**axis, showline=True)
+    axis = dict(gridcolor=p.grid, linecolor=p.axis, zerolinecolor=p.axis, tickfont=dict(color=p.muted),
+                title_font=dict(color=p.text_secondary, size=12))
+    fig.update_xaxes(**axis, showline=True, showgrid=False)
     fig.update_yaxes(**axis, showline=False)
     if x_title:
         fig.update_xaxes(title_text=x_title)
@@ -83,9 +53,33 @@ def _layout(fig: go.Figure, t: Theme, *, height: int, x_title: str | None = None
     return fig
 
 
-# --------------------------------------------------------------------------- #
-# Pareto
-# --------------------------------------------------------------------------- #
+def history_forecast(history: pd.DataFrame, baseline: BaselineBundle, column: str, *,
+                     start: pd.Timestamp | None = None, end: pd.Timestamp | None = None, dark: bool = False) -> go.Figure:
+    """Reported months from `start` to `end` (default: the last four years) running into the baseline
+    forecast for one column; the forecast is drawn only when the window reaches the last reported month."""
+    p = palette(dark)
+    ordered = history.sort_values("timestamp")
+    if start is None and end is None:
+        recent = ordered.tail(48)
+    else:
+        ts = ordered["timestamp"]
+        recent = ordered[(ts >= (start if start is not None else ts.iloc[0])) & (ts <= (end if end is not None else ts.iloc[-1]))]
+    money = column.endswith("_gbp")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=recent["timestamp"], y=recent[column], name="Reported", mode="lines",
+                             line=dict(color=p.text, width=1.6), hovertemplate="Reported %{y:,.0f}<extra></extra>"))
+    if len(recent) and recent["timestamp"].iloc[-1] == ordered["timestamp"].iloc[-1]:
+        joined = pd.concat([recent.tail(1), baseline.monthly])  # the forecast starts from the last reported month
+        fig.add_trace(go.Scatter(x=joined["timestamp"], y=joined[column], name="Forecast", mode="lines",
+                                 line=dict(color=p.baseline, width=2, dash="dash"),
+                                 hovertemplate="Forecast %{y:,.0f}<extra></extra>"))
+        fig.add_vline(x=baseline.monthly["timestamp"].iloc[0], line=dict(color=p.axis, width=1))
+    _layout(fig, p, height=260)
+    fig.update_layout(title=dict(text="Operating profit per month" if money else "Emissions per month (tCO₂e)",
+                                 font=dict(size=13, color=p.text_secondary), x=0, xanchor="left", y=0.98),
+                      legend=dict(y=1.0, x=1, xanchor="right"), margin=dict(t=44))
+    fig.update_yaxes(tickprefix="£" if money else "", tickformat="~s")
+    return fig
 
 
 @dataclass(frozen=True)
@@ -105,15 +99,12 @@ def pareto_scatter(
     dark: bool = False,
 ) -> ParetoFigure:
     """x = horizon emissions (tCO₂e, lower is better); y = cumulative operating profit (GBP)."""
-    t = theme_for(dark)
+    p = palette(dark)
     fig = go.Figure()
     ids: dict[tuple[int, int], str] = {}
     cand = optimization.candidates
     pareto = optimization.pareto.sort_values("total_co2e_tco2e")
-    hover = (
-        "Emissions %{x:,.1f} tCO₂e<br>Profit £%{y:,.0f}"
-        "<br>Gross outlay £%{customdata[1]:,.0f}<extra></extra>"
-    )
+    hover = "Emissions %{x:,.0f} tCO₂e<br>Profit £%{y:,.0f}<br>Outlay £%{customdata[1]:,.0f}<extra></extra>"
 
     def add(frame: pd.DataFrame, **kwargs: object) -> None:
         curve = len(fig.data)
@@ -127,158 +118,146 @@ def pareto_scatter(
     infeasible = cand[~cand["feasible"]]
     dominated = cand[cand["feasible"] & (cand["pareto_rank"] != 0)]
     if len(infeasible):
-        add(infeasible, name="Infeasible candidate", mode="markers",
-            marker=dict(color=t.muted, size=6, opacity=0.35, symbol="x-thin", line=dict(width=1, color=t.muted)))
+        add(infeasible, name="Misses a goal", mode="markers", visible="legendonly" if len(pareto) else True,
+            marker=dict(color=p.muted, size=5, opacity=0.35, symbol="x-thin", line=dict(width=1, color=p.muted)))
     if len(dominated):
-        add(dominated, name="Feasible, dominated", mode="markers",
-            marker=dict(color=t.muted, size=7, opacity=0.6, line=dict(width=0)))
+        add(dominated, name="Meets goals, not best", mode="markers",
+            marker=dict(color=p.muted, size=4, opacity=0.22, line=dict(width=0)))
     if len(pareto):
-        add(pareto, name="Pareto frontier", mode="lines+markers",
-            line=dict(color=t.selected, width=2), marker=dict(color=t.selected, size=10, line=dict(width=2, color=t.surface)))
+        add(pareto, name="Best trade-offs", mode="lines+markers",
+            line=dict(color=p.plan, width=2), marker=dict(color=p.plan, size=9, line=dict(width=1.5, color=p.surface)))
     for sid, label, symbol in ((recommended_id, "Recommended", "star"), (selected_id, "Selected", "circle-open")):
         if sid and sid in set(pareto["strategy_id"]):
-            row = pareto[pareto["strategy_id"] == sid]
-            add(row, name=label, mode="markers",
-                marker=dict(color=t.selected if symbol == "star" else t.text, size=18 if symbol == "star" else 22,
-                            symbol=symbol, line=dict(width=2, color=t.surface if symbol == "star" else t.text)))
+            add(pareto[pareto["strategy_id"] == sid], name=label, mode="markers",
+                marker=dict(color=p.plan if symbol == "star" else p.text, size=17 if symbol == "star" else 21,
+                            symbol=symbol, line=dict(width=1.5, color=p.surface if symbol == "star" else p.text)))
     base = baseline.totals
     fig.add_trace(go.Scatter(
-        x=[base["total_co2e_tco2e"]], y=[base["operating_profit_gbp"]], name="Baseline (no action)", mode="markers",
-        marker=dict(color=t.baseline, size=12, symbol="square", line=dict(width=2, color=t.surface)),
-        hovertemplate="<b>Baseline</b><br>Emissions %{x:,.1f} tCO₂e<br>Profit £%{y:,.0f}<extra></extra>",
+        x=[base["total_co2e_tco2e"]], y=[base["operating_profit_gbp"]], name="No new actions", mode="markers",
+        marker=dict(color=p.baseline, size=11, symbol="square", line=dict(width=1.5, color=p.surface)),
+        hovertemplate="<b>No new actions</b><br>Emissions %{x:,.0f} tCO₂e<br>Profit £%{y:,.0f}<extra></extra>",
     ))
-    if whatif is not None:
+    if whatif is not None and any(whatif.config.as_vector()):  # an empty mix is the baseline square
         fig.add_trace(go.Scatter(
-            x=[whatif.metrics["total_co2e_tco2e"]], y=[whatif.metrics["total_profit_gbp"]], name="Manual what-if",
-            mode="markers", marker=dict(color=t.whatif, size=13, symbol="diamond", line=dict(width=2, color=t.surface)),
-            hovertemplate="<b>Manual what-if</b><br>Emissions %{x:,.1f} tCO₂e<br>Profit £%{y:,.0f}<extra></extra>",
+            x=[whatif.metrics["total_co2e_tco2e"]], y=[whatif.metrics["total_profit_gbp"]], name="Your mix",
+            mode="markers", marker=dict(color=p.whatif, size=12, symbol="diamond", line=dict(width=1.5, color=p.surface)),
+            hovertemplate="<b>Your mix</b><br>Emissions %{x:,.0f} tCO₂e<br>Profit £%{y:,.0f}<extra></extra>",
         ))
-    _layout(fig, t, height=440, x_title="Horizon emissions (tCO₂e) — lower is better",
-            y_title="Cumulative operating profit (GBP)")
+    _layout(fig, p, height=420, x_title="Emissions over the next 12 months (tCO₂e) — lower is better",
+            y_title="Operating profit over the next 12 months")
     fig.update_layout(hovermode="closest", clickmode="event+select", dragmode="pan")
-    fig.update_yaxes(tickprefix="£", tickformat=",.0f")
+    fig.update_yaxes(tickprefix="£", tickformat="~s")
+    fig.update_xaxes(tickformat=",.0f", showgrid=True)
     return ParetoFigure(figure=fig, point_ids=ids)
 
 
-# --------------------------------------------------------------------------- #
-# Monthly comparison
-# --------------------------------------------------------------------------- #
-
-
-def monthly_comparison(
-    baseline: BaselineBundle,
-    scenarios: Mapping[str, SimulationResult],
-    *,
-    dark: bool = False,
-) -> go.Figure:
-    """Two stacked panels (emissions, operating profit), each with its own single
-    y-axis and a shared month axis. Keys of `scenarios`: 'selected', 'whatif'."""
-    t = theme_for(dark)
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.12,
-                        subplot_titles=("Monthly emissions (tCO₂e)", "Monthly operating profit (GBP)"))
-    styles = {
-        "baseline": ("Baseline", dict(color=t.baseline, width=2, dash="dot")),
-        "selected": ("Selected strategy", dict(color=t.selected, width=2)),
-        "whatif": ("Manual what-if", dict(color=t.whatif, width=2)),
-    }
-    # Baseline is drawn last so its dotted reference line stays visible when a
-    # scenario coincides with it (e.g. the no-op what-if).
+def scope_totals(baseline: BaselineBundle, scenarios: Mapping[str, SimulationResult], *, dark: bool = False) -> go.Figure:
+    """Where the cut comes from: next-12-month emissions by scope (presentation sums only)."""
+    p = palette(dark)
+    scopes = [("scope3_tco2e", "Scope 3 · value chain"), ("scope2_tco2e", "Scope 2 · bought energy"),
+              ("scope1_tco2e", "Scope 1 · own fuel")]
+    styles = {"baseline": ("No new actions", p.baseline), "selected": ("Selected plan", p.plan), "whatif": ("Your mix", p.whatif)}
     series = {**{k: v.monthly for k, v in scenarios.items()}, "baseline": baseline.monthly}
-    for key, frame in series.items():
-        name, line = styles[key]
-        for row, col, fmt in ((1, "total_co2e_tco2e", ",.2f"), (2, "operating_profit_gbp", ",.0f")):
-            fig.add_trace(go.Scatter(
-                x=frame["timestamp"], y=frame[col], name=name, legendgroup=key, showlegend=row == 1,
-                mode="lines+markers", line=line, marker=dict(size=6),
-                hovertemplate=f"{name}: %{{y:{fmt}}}<extra></extra>",
-            ), row=row, col=1)
-    _layout(fig, t, height=460)
-    fig.update_yaxes(tickprefix="£", tickformat=",.0f", row=2, col=1)
-    fig.update_annotations(font=dict(color=t.text_secondary, size=12), x=0, xanchor="left")
-    fig.update_layout(legend=dict(y=1.08))
-    return fig
-
-
-def scope_totals(
-    baseline: BaselineBundle, scenarios: Mapping[str, SimulationResult], *, dark: bool = False
-) -> go.Figure:
-    """Horizon emissions by scope, grouped by scenario (presentation sums only)."""
-    t = theme_for(dark)
-    scopes = [("scope1_tco2e", "Scope 1"), ("scope2_tco2e", "Scope 2"), ("scope3_tco2e", "Scope 3")]
-    styles = {"baseline": ("Baseline", t.baseline), "selected": ("Selected strategy", t.selected), "whatif": ("Manual what-if", t.whatif)}
-    series = {"baseline": baseline.monthly, **{k: v.monthly for k, v in scenarios.items()}}
     fig = go.Figure()
     for key, frame in series.items():
         name, color = styles[key]
         fig.add_trace(go.Bar(
-            x=[label for _, label in scopes], y=[float(frame[c].sum()) for c, _ in scopes], name=name,
-            marker=dict(color=color, line=dict(width=0), cornerradius=4),
-            hovertemplate=f"{name}<br>%{{x}}: %{{y:,.1f}} tCO₂e<extra></extra>",
+            y=[label for _, label in scopes], x=[float(frame[c].sum()) for c, _ in scopes], name=name, orientation="h",
+            marker=dict(color=color, line=dict(width=0)),
+            hovertemplate=f"{name}<br>%{{y}}: %{{x:,.0f}} tCO₂e<extra></extra>",
         ))
-    _layout(fig, t, height=300, y_title="Horizon emissions (tCO₂e)")
-    fig.update_layout(barmode="group", bargap=0.3, bargroupgap=0.08, hovermode="closest")
+    _layout(fig, p, height=230, x_title="tCO₂e over the next 12 months")
+    fig.update_layout(barmode="group", bargap=0.35, bargroupgap=0.05, hovermode="closest", legend=dict(traceorder="reversed"))
+    fig.update_xaxes(tickformat=",.0f", showgrid=True)
     return fig
-
-
-# --------------------------------------------------------------------------- #
-# P1 optional panels
-# --------------------------------------------------------------------------- #
 
 
 def risk_intervals(risk: RiskResult, deterministic: SimulationResult | None, *, dark: bool = False) -> go.Figure:
     """Empirical p05–p95 trial interval (not a confidence interval on the mean)."""
-    t = theme_for(dark)
+    p = palette(dark)
     s = risk.summary
-    fig = make_subplots(rows=1, cols=2, subplot_titles=("Horizon emissions (tCO₂e)", "Cumulative profit (GBP)"),
-                        horizontal_spacing=0.14)
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Emissions (tCO₂e)", "Operating profit (£)"), horizontal_spacing=0.14)
     for col, (lo, mean, hi, metric) in enumerate((
         ("co2_p05_tco2e", "co2_mean_tco2e", "co2_p95_tco2e", "total_co2e_tco2e"),
         ("profit_p05_gbp", "profit_mean_gbp", "profit_p95_gbp", "total_profit_gbp"),
     ), start=1):
         fig.add_trace(go.Scatter(
-            x=[s[mean]], y=["Trials"], mode="markers", name="Trial mean", showlegend=col == 1,
-            marker=dict(color=t.selected, size=12),
+            x=[s[mean]], y=["Trials"], mode="markers", name="Trial mean, 5th–95th percentile", showlegend=col == 1,
+            marker=dict(color=p.plan, size=11),
             error_x=dict(type="data", symmetric=False, array=[s[hi] - s[mean]], arrayminus=[s[mean] - s[lo]],
-                         color=t.selected, thickness=2, width=8),
-            hovertemplate="p05 %{customdata[0]:,.1f} · mean %{x:,.1f} · p95 %{customdata[1]:,.1f}<extra></extra>",
+                         color=p.plan, thickness=2, width=7),
+            hovertemplate="p05 %{customdata[0]:,.0f} · mean %{x:,.0f} · p95 %{customdata[1]:,.0f}<extra></extra>",
             customdata=[[s[lo], s[hi]]],
         ), row=1, col=col)
         if deterministic is not None:
             fig.add_trace(go.Scatter(
-                x=[deterministic.metrics[metric]], y=["Deterministic"], mode="markers", name="Deterministic result",
-                showlegend=col == 1, marker=dict(color=t.baseline, size=11, symbol="square"),
+                x=[deterministic.metrics[metric]], y=["Plan"], mode="markers", name="Plan as calculated",
+                showlegend=col == 1, marker=dict(color=p.baseline, size=10, symbol="square"),
             ), row=1, col=col)
-    _layout(fig, t, height=220)
+    _layout(fig, p, height=210)
     fig.update_layout(hovermode="closest")
-    fig.update_annotations(font=dict(color=t.text_secondary, size=12))
+    fig.update_annotations(font=dict(color=p.text_secondary, size=12))
     return fig
 
 
-def shap_contributions(explanation: ExplanationResult, target: str, *, dark: bool = False) -> go.Figure:
-    """Mean |SHAP| ranking is a presentation summary of provider rows."""
-    t = theme_for(dark)
+def shap_top_k(explanation: ExplanationResult, target: str, k: int, *, dark: bool = False) -> go.Figure:
+    """The k inputs that move the forecast most, as their share of the movement (mean |SHAP|), coloured by
+    whether they raise or lower it on average; the rest grouped into one bar. Presentation summaries only."""
+    p = palette(dark)
+    share = shap_importance(explanation, target)
     rows = explanation.contributions[explanation.contributions["target"] == target]
-    mean = rows.groupby("feature")["shap_value"].mean().sort_values(key=lambda s: s.abs())
-    fig = go.Figure(go.Bar(
-        x=mean.to_numpy(), y=mean.index.tolist(), orientation="h",
-        marker=dict(color=[t.positive if v >= 0 else t.negative for v in mean.to_numpy()], cornerradius=4),
-        hovertemplate="%{y}: %{x:,.3f}<extra></extra>",
-    ))
-    unit = explanation.units.get(target, "")
-    _layout(fig, t, height=60 + 36 * len(mean), x_title=f"Mean contribution to raw model output ({unit})")
+    push = rows.groupby("feature")["shap_value"].mean()
+    top, rest = list(share.index[:k]), list(share.index[k:])
+    labels = [feature_label(f) for f in reversed(top)]  # plotly draws the first bar at the bottom
+    values = [100 * float(share[f]) for f in reversed(top)]
+    colors = [p.plan if push[f] >= 0 else p.negative for f in reversed(top)]
+    hover = ["raises the forecast" if push[f] >= 0 else "lowers the forecast" for f in reversed(top)]
+    if rest:
+        labels.insert(0, f"All other {len(rest)} inputs")
+        values.insert(0, 100 * float(share[rest].sum()))
+        colors.insert(0, p.baseline)
+        hover.insert(0, "together")
+    fig = go.Figure(go.Bar(x=values, y=labels, orientation="h", marker=dict(color=colors), customdata=hover,
+                           hovertemplate="%{y}: %{x:.0f}% of the movement, %{customdata}<extra></extra>"))
+    _layout(fig, p, height=60 + 28 * len(labels), x_title="Share of the forecast's movement (%)")
     fig.update_layout(hovermode="closest", showlegend=False)
     return fig
 
 
 def benchmark_position(result: BenchmarkResult, *, dark: bool = False) -> go.Figure:
-    t = theme_for(dark)
-    fig = go.Figure()
-    fig.add_trace(go.Bar(
+    p = palette(dark)
+    fig = go.Figure(go.Bar(
         x=[result.industry_median, result.company_intensity_tco2e_per_million_gbp],
-        y=["Peer median", "Company (baseline forecast)"], orientation="h",
-        marker=dict(color=[t.baseline, t.selected], cornerradius=4),
+        y=["Peer median", "Your forecast"], orientation="h", marker=dict(color=[p.baseline, p.plan]),
         hovertemplate="%{y}: %{x:,.1f} tCO₂e per £m revenue<extra></extra>",
     ))
-    _layout(fig, t, height=160, x_title="Emissions intensity (tCO₂e per £m revenue) — lower is better")
+    _layout(fig, p, height=150, x_title="Emissions per £m revenue (tCO₂e) — lower is better")
     fig.update_layout(hovermode="closest", showlegend=False)
+    return fig
+
+
+def model_errors(table: pd.DataFrame, *, dark: bool = False) -> go.Figure:
+    """Held-out error (WAPE %) per model and target from `compare_models`; shorter is better."""
+    p = palette(dark)
+    fig = go.Figure()
+    for target, name, color in (("emissions", "Emissions", p.plan), ("profit", "Operating profit", p.baseline)):
+        rows = table[table["target"] == target]
+        fig.add_trace(go.Bar(x=rows["wape"], y=[model_name(m) for m in rows["model"]], name=name, orientation="h",
+                             marker=dict(color=color), hovertemplate=f"{name}<br>%{{y}}: %{{x:.1f}}% error<extra></extra>"))
+    _layout(fig, p, height=80 + 44 * table["model"].nunique(), x_title="Average miss on the last 12 months (% of actual)")
+    fig.update_layout(barmode="group", hovermode="closest")
+    fig.update_yaxes(autorange="reversed")
+    return fig
+
+
+def grid_intensity(times: pd.Series, intensity: pd.Series, best: tuple[pd.Timestamp, pd.Timestamp] | None, *,
+                   dark: bool = False) -> go.Figure:
+    """GB grid carbon intensity per half-hour, with the cleanest hour shaded."""
+    p = palette(dark)
+    fig = go.Figure(go.Scatter(x=times, y=intensity, mode="lines", line=dict(color=p.text, width=1.6, shape="hv"),
+                               name="Forecast", hovertemplate="%{x|%d %b %H:%M}: %{y:,.0f} g CO₂/kWh<extra></extra>"))
+    if best is not None:
+        fig.add_vrect(x0=best[0], x1=best[1], fillcolor=p.plan, opacity=0.25, line_width=0)
+    _layout(fig, p, height=220, y_title="g CO₂ per kWh")
+    fig.update_layout(showlegend=False, margin=dict(t=12))
     return fig

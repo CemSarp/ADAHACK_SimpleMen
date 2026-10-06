@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import time
-
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from src.dashboard import trainer
 from src.integration import create_services
 from tests.support import REPO_ROOT
 
@@ -29,13 +26,17 @@ def test_default_and_legacy_launches_use_the_configured_company(monkeypatch, leg
     app = start()
     baseline = app.session_state["cos_baseline"]
     assert baseline.company_id == "supply-chain-demo-co" and not baseline.provenance.is_mock
+    assert baseline.data_kind == "synthetic"
     assert app.number_input(key="co_widget_budget").value == 20_000_000
     assert not any(w.key in ("co_widget_mode", "co_widget_preset", "co_widget_horizon") for w in app.selectbox)
     assert not any(w.key == "co_widget_seed" for w in app.number_input)
     visible = " ".join(str(e.value) for group in (app.caption, app.info, app.warning, app.error, app.markdown)
                        for e in group)
     assert all(word not in visible for word in ("MOCK", "WS1", "WS2", "WS3", "Provider mode", "input hash", "tests/"))
-    assert "Synthetic data" in visible
+    # Only the actions this company's data supports get a slider.
+    assert {s.key for s in app.slider} >= {"co_slider_renewable_energy", "co_slider_ev_adoption"}
+    assert "co_slider_travel_reduction" not in {s.key for s in app.slider}
+    assert "Not available for this data" in visible
 
 
 def test_factory_defaults_to_domain_services():
@@ -45,34 +46,42 @@ def test_factory_defaults_to_domain_services():
     assert services.capabilities.risk_available and services.capabilities.benchmark_available
 
 
-def test_data_explorer_changes_feature_and_window():
-    app = start()
-    app.selectbox(key="eda_feature").set_value("revenue_eur")
-    app.selectbox(key="eda_range").set_value("1 year").run()
-    assert not app.exception
-    assert app.selectbox(key="eda_feature").value == "revenue_eur"
-    assert app.selectbox(key="eda_range").value == "1 year"
-    assert app.session_state["cos_baseline"] is not None
+def _all_text(app: AppTest) -> str:
+    return " ".join(str(e.value) for group in (app.caption, app.info, app.warning, app.error, app.markdown, app.success)
+                    for e in group)
 
 
-def test_model_comparison_completes_without_replacing_planning_forecast(monkeypatch, tmp_path):
-    monkeypatch.setattr(trainer, "OUTPUT_DIR", tmp_path / "comparison")
+def test_sidebar_shows_what_the_budget_and_profit_floor_accept():
     app = start()
-    baseline = app.session_state["cos_baseline"]
-    app.pills(key="trainer_models").set_value(["SeasonalNaive"]).run()
-    app.button(key="trainer_start").click().run()
-    job = app.session_state[trainer.JOB_KEY]
-    deadline = time.monotonic() + 120
-    while job.running and time.monotonic() < deadline:
-        time.sleep(0.1)
-    if job.running:
-        job.abort()
-        pytest.fail("Model comparison timed out")
-    assert job.returncode == 0, "\n".join(job.lines[-20:])
-    app.run()
-    assert not app.exception
-    assert any("Comparison complete" in e.value for e in app.success)
-    assert (job.output_dir / "emissions" / "summary.json").exists()
-    assert (job.output_dir / "profit" / "summary.json").exists()
-    assert app.session_state["cos_baseline"].model_id == baseline.model_id
-    assert app.session_state["cos_baseline"].totals == baseline.totals
+    sidebar = " ".join(str(c.value) for c in app.sidebar.caption)
+    assert "£0 or more" in sidebar and "makes no difference" in sidebar  # budget: lower bound and useful top
+    assert "Any amount, can be negative" in sidebar and "without new actions" in sidebar
+
+
+def test_history_timeline_can_be_narrowed():
+    app = start()
+    timeline = app.select_slider(key="co_widget_timeline")
+    months = timeline.options
+    timeline.set_value((months[12], months[-1])).run()
+    assert not app.exception, [e.message for e in app.exception]
+    assert app.select_slider(key="co_widget_timeline").value == (months[12], months[-1])
+
+
+def test_models_are_compared_only_on_request_and_one_can_drive_the_forecast():
+    app = start()
+    assert app.session_state["cos_backtest"].selected_models["total_co2e_tco2e"] == "RandomForest"
+    assert not any(getattr(d, "key", None) == "co_model_table" for d in app.dataframe)  # nothing ran at load
+    app.pills(key="co_widget_models").set_value(["RandomForest", "SeasonalNaive"]).run()
+    [b for b in app.button if b.label == "Compare models"][0].click().run()
+    assert not app.exception, [e.message for e in app.exception]
+    assert any("Lowest error" in t for t in (str(c.value) for c in app.caption))
+    app.selectbox(key="co_widget_forecast_model").set_value("SeasonalNaive").run()
+    assert not app.exception, [e.message for e in app.exception]
+    assert app.session_state["cos_backtest"].selected_models["total_co2e_tco2e"] == "SeasonalNaive"
+
+
+def test_grid_timing_and_uncertainty_method_are_explained():
+    app = start()
+    text = _all_text(app)
+    assert "Cleanest hour in the saved forecast" in text  # offline: the recorded GB grid example
+    assert "Monte Carlo" in text

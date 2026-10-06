@@ -9,20 +9,16 @@
     "horizon_months": 12,
     "model_dir": "models/ws1",
     "ws1_modelling": {
-      "test_months": 24,
-      "backtest_months": 12,
-      "step": 1,
-      "selection_metric": "wape",
-      "interval": 0.8,
-      "prophet_window": 96,
+      "test_months": 12,
+      "step": 3,
       "seed": 42
     },
     "driver_policy": {
       "policy_id": "seasonal-clipped-growth-v1",
-      "flow_columns": ["revenue_gbp", "electricity_kwh", "fleet_km"],
-      "state_columns": ["employees", "renewable_energy_share", "ev_share", "fleet_size"],
-      "zero_columns": ["gas_kwh", "business_travel_km", "cloud_compute_hours"],
-      "annual_growth_bounds": [-0.1, 0.2]
+      "annual_growth_bounds": [
+        -0.1,
+        0.2
+      ]
     }
   },
   "assumptions": "config/action_assumptions_supply_chain.json",

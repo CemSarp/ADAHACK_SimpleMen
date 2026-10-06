@@ -185,14 +185,14 @@ def test_evaluation_budget_includes_initialization(baseline, assumptions, exampl
     assert diagnostics["evaluated_count"] == 37  # 10 initial + 10 + 10 + 7 (last generation truncated)
     assert diagnostics["termination_reason"] == "max_evaluations"
     assert diagnostics["unique_count"] <= 37
-    assert len(calls) == diagnostics["unique_count"] + diagnostics["revalidated_pareto_count"]
+    assert len(calls) == diagnostics["unique_count"] + diagnostics["revalidated_pareto_count"] + diagnostics["probe_count"]
 
 
 def test_a_budget_of_one_evaluates_only_the_noop(baseline, assumptions, example_constraints):
     simulator, calls = counting(simulate_strategy)
     config = OptimizerConfig(seed=1, population_size=64, generations=32, max_evaluations=1)
     result = optimize_strategies(baseline, example_constraints, assumptions=assumptions, config=config, simulator=simulator)
-    assert calls == [ActionConfig.noop()]
+    assert calls[0] == ActionConfig.noop() and len(calls) == 1 + result.diagnostics["probe_count"]  # no-op + action probe
     assert result.candidates["strategy_id"].tolist() == [NOOP_ID]
     assert result.status == "infeasible"  # the no-op misses the 20% reduction target
     assert result.diagnostics["evaluated_count"] == 1

@@ -19,7 +19,7 @@ from src.contracts.errors import ContractValidationError, UnsupportedHorizon, Un
 from src.contracts.types import BacktestReport, BaselineBundle, ProviderInfo
 from src.integration.config import REPO_ROOT, IntegrationConfig
 
-from .baseline import PROVIDER_NAME, build_backtest, build_baseline
+from .baseline import PROVIDER_NAME, build_backtest, build_baseline, driver_policy_for
 from .history import ImportedHistory, load_company_history
 from .ws1_adapter import WS1Artifacts, identity_for, load_or_train, model_id_for
 
@@ -27,15 +27,22 @@ __version__ = "ws1-integration-1"
 
 
 class WS1ForecastProvider:
-    def __init__(self, config: IntegrationConfig) -> None:
+    """The configured company CSV, or an already imported table (`imported`, e.g. an upload)."""
+
+    def __init__(self, config: IntegrationConfig, imported: ImportedHistory | None = None,
+                 *, data_kind: str = "reported") -> None:
         self.config = config
-        self.imported: ImportedHistory = load_company_history(config.input_csv, config.import_config)
-        provenance = json.loads((REPO_ROOT / config.provenance).read_text(encoding="utf-8"))
-        if provenance.get("sha256") not in (None, self.imported.csv_sha256):
-            raise ContractValidationError(
-                "company_csv.sha256", f"{config.input_csv} does not match the checksum recorded in {config.provenance}; "
-                "update the provenance record deliberately if the data changed")
-        self.data_kind = provenance.get("data_kind", "synthetic")
+        if imported is None:
+            imported = load_company_history(config.input_csv, config.import_config)
+            provenance = json.loads((REPO_ROOT / config.provenance).read_text(encoding="utf-8"))
+            if provenance.get("sha256") not in (None, imported.csv_sha256):
+                raise ContractValidationError(
+                    "company_csv.sha256", f"{config.input_csv} does not match the checksum recorded in "
+                    f"{config.provenance}; update the provenance record deliberately if the data changed")
+            data_kind = provenance.get("data_kind", "synthetic")
+        self.imported: ImportedHistory = imported
+        self.data_kind = data_kind
+        self.policy = driver_policy_for(imported.history, config.driver_policy)
         self.supported_horizons: tuple[int, ...] = (int(config.horizon_months),)
         self.settings = dict(config.ws1_modelling)
         self.model_id = model_id_for(identity_for(self.imported, self.settings, config.horizon_months))
@@ -60,7 +67,7 @@ class WS1ForecastProvider:
         with self._lock:
             if self._baseline is None:
                 self._baseline = build_baseline(
-                    self.imported, self.artifacts(), horizon_months, self.config.driver_policy,
+                    self.imported, self.artifacts(), horizon_months, self.policy,
                     data_kind=self.data_kind, config_id=self.config.config_id, seed=int(self.settings["seed"]))
             return self._baseline
 
@@ -70,7 +77,7 @@ class WS1ForecastProvider:
             if self._backtest is None:
                 self._backtest = build_backtest(self.imported, self.artifacts(), config_id=self.config.config_id,
                                                 seed=int(self.settings["seed"]),
-                                                driver_policy_id=str(self.config.driver_policy["policy_id"]))
+                                                driver_policy_id=str(self.policy["policy_id"]))
             return self._backtest
 
     def get_history(self, *, company_id: str) -> pd.DataFrame | None:

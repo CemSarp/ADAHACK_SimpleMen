@@ -539,17 +539,18 @@ class ForecastingPipeline:
     """
 
     def __init__(self, key: str, data: pd.DataFrame,
-                 config: ModellingConfig | None = None) -> None:
+                 config: ModellingConfig | None = None, spec: TargetSpec | None = None) -> None:
         """Initialises the pipeline and registers the available models.
 
         Args:
-            key: Key of the target in :data:`TARGETS`.
+            key: Key of the target in :data:`TARGETS` (also the output sub-directory).
             data: Prepared monthly dataset (see :func:`prepare_data`).
             config: Pipeline configuration. Defaults to :class:`ModellingConfig`.
+            spec: Target description for any other dataset. Defaults to ``TARGETS[key]``.
         """
         self.config = config or ModellingConfig()
         self.key = key
-        self.spec = TARGETS[key]
+        self.spec = spec or TARGETS[key]
         self.data = data
         self.models = self._default_models()
         self.train: pd.DataFrame | None = None
@@ -1051,7 +1052,7 @@ class ForecastingPipeline:
         # flood the log with "delayed/Parallel" warnings.
         models["RandomForest"] = lambda: DirectTreeForecaster(
             "RandomForest", lambda: RandomForestRegressor(
-                n_estimators=300, min_samples_leaf=2, max_features=0.6,
+                n_estimators=100, min_samples_leaf=2, max_features=0.6,
                 random_state=seed, n_jobs=1), spec, cfg.horizon)
         if Prophet is not None:
             models["Prophet"] = lambda: ProphetForecaster(spec, cfg.horizon, cfg.prophet_window)

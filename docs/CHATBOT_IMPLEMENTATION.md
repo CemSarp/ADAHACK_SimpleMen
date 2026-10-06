@@ -33,7 +33,7 @@ Module layout (all under `src/llm/` except UI/state):
 
 ## 2. Floating bubble behavior
 
-- Closed: a small circular button fixed at the bottom-left of the viewport.
+- Closed: a small circular button fixed at the bottom-right of the viewport.
 - Open: a compact panel above the button with a title, close control, clear-chat control, message history, suggested questions, text input and a sending indicator.
 - Open/closed state and the conversation live in `st.session_state` under the `coc_` prefix, so closing and reopening keeps the conversation. The dashboard state prefix (`cos_`) is separate: clearing chat does not reset the dashboard, and a dashboard provider change does not delete the chat (it marks old cards stale).
 - Mobile (`max-width: 640px`): the panel spans the viewport width minus a margin and is height-limited.
@@ -83,7 +83,7 @@ Tool execution uses the bound context object only. The model cannot choose a com
 
 ## 5. Tools
 
-Allowlist: `get_baseline`, `simulate_strategy`, `optimize_strategies`, `get_risk_summary`. Unknown tools and malformed arguments are rejected before dispatch with a `ToolResult(status="error")` that the model can read.
+Allowlist: `get_baseline`, `simulate_strategy`, `optimize_strategies`, `get_risk_summary`, `get_company_profile`, `compare_actions`, `get_public_reference`, `get_forecast_drivers`. Unknown tools and malformed arguments are rejected before dispatch with a `ToolResult(status="error")` that the model can read.
 
 | Tool | Arguments | Notes |
 | --- | --- | --- |

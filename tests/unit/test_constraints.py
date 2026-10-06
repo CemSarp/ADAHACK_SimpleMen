@@ -172,3 +172,23 @@ def test_wrong_types_are_rejected(nonzero, example_constraints):
         evaluate_constraints({"metrics": {}}, example_constraints)  # type: ignore[arg-type]
     with pytest.raises(ContractValidationError):
         evaluate_constraints(nonzero, {"budget_gbp": 1})  # type: ignore[arg-type]
+
+
+def test_relaxation_hints_read_one_goal_at_a_time_from_the_tried_mixes():
+    import pandas as pd
+
+    from src.optimization.constraints import relaxation_hints
+
+    tried = pd.DataFrame({
+        "total_cost_gbp": [0.0, 400.0, 900.0, 1500.0],
+        "total_profit_gbp": [1000.0, 980.0, 990.0, 700.0],
+        "co2_reduction_ratio": [0.0, 0.10, 0.25, 0.40],
+    })
+    goals = ConstraintConfig(budget_gbp=500.0, min_total_profit_gbp=950.0, min_co2_reduction_ratio=0.2)
+    hints = relaxation_hints(tried, goals)
+    assert hints == {
+        "budget_gbp": 900.0,                 # cheapest mix that keeps profit and reaches the target
+        "min_total_profit_gbp": None,        # nothing within budget reaches the target
+        "min_co2_reduction_ratio": 0.10,     # deepest cut within budget and above the floor
+        "max_reduction_ratio": 0.40,         # deepest cut tried at all
+    }

@@ -6,7 +6,7 @@
   reconciled to the forecast total with trailing-12-month aggregate shares
   (s4 step 7). WS1 does not forecast activities or scopes, so these two steps are
   integration adapters pending WS1 review.
-* BacktestReport: WS1's held-out walk-forward predictions (best model) against
+* BacktestReport: WS1's walk-forward predictions over the last 12 months against
   its seasonal-naive-with-drift model at the same origins and horizons.
 """
 
@@ -37,6 +37,16 @@ from .ws1_adapter import TARGET_KEYS, WS1Artifacts
 
 PROVIDER_NAME = "ws1-ml_core"
 NAIVE_MODEL = "SeasonalNaive"
+FLOW_COLUMNS = ("revenue_gbp", "electricity_kwh", "gas_kwh", "fleet_km", "business_travel_km", "cloud_compute_hours")
+STATE_COLUMNS = ("employees", "renewable_energy_share", "ev_share", "fleet_size")
+
+
+def driver_policy_for(history: pd.DataFrame, base: Mapping[str, Any]) -> dict[str, Any]:
+    """The configured policy applied to whichever flows this company reports (others stay 0)."""
+    flows = [c for c in FLOW_COLUMNS if history[c].sum() > 0]
+    return {"policy_id": base["policy_id"], "flow_columns": flows, "state_columns": list(STATE_COLUMNS),
+            "zero_columns": [c for c in FLOW_COLUMNS if c not in flows],
+            "annual_growth_bounds": list(base["annual_growth_bounds"])}
 
 
 def project_drivers(history: pd.DataFrame, horizon: int, policy: Mapping[str, Any]) -> pd.DataFrame:
@@ -98,7 +108,7 @@ def build_baseline(imported: ImportedHistory, artifacts: WS1Artifacts, horizon: 
     scopes = reconcile_scopes(history, totals, monthly["renewable_energy_share"].to_numpy(dtype=float))
     for col in scopes.columns:
         monthly[col] = scopes[col].to_numpy()
-    monthly["operating_profit_gbp"] = pr["prediction"].to_numpy(dtype=float) * cfg.gbp_per_eur
+    monthly["operating_profit_gbp"] = pr["prediction"].to_numpy(dtype=float)
     for col in HISTORY_INT_COLUMNS:
         monthly[col] = monthly[col].round().astype("int64")
     for col in HISTORY_COLUMNS:
@@ -142,7 +152,6 @@ def _metrics(actual: np.ndarray, pred: np.ndarray) -> tuple[float, float, float 
 
 def build_backtest(imported: ImportedHistory, artifacts: WS1Artifacts, *, config_id: str, seed: int,
                    driver_policy_id: str) -> BacktestReport:
-    fx = imported.import_config.gbp_per_eur
     folds, oof, aggregate = [], [], {}
     for key, target in TARGET_KEYS.items():
         preds = artifacts.test_predictions[key]
@@ -152,10 +161,9 @@ def build_backtest(imported: ImportedHistory, artifacts: WS1Artifacts, *, config
         joined = b.join(n[["prediction"]].rename(columns={"prediction": "naive"}), how="inner")
         if len(joined) != len(b):
             raise ForecastError(f"WS1 {key}: seasonal-naive predictions do not cover every evaluated origin/horizon")
-        scale = fx if key == "profit" else 1.0
-        actual = joined["actual"].to_numpy(float) * scale
-        predicted = joined["prediction"].to_numpy(float) * scale
-        naive = joined["naive"].to_numpy(float) * scale
+        actual = joined["actual"].to_numpy(float)
+        predicted = joined["prediction"].to_numpy(float)
+        naive = joined["naive"].to_numpy(float)
         mae, rmse, r2 = _metrics(actual, predicted)
         nmae, nrmse, _ = _metrics(actual, naive)
         aggregate[target] = {"mae": mae, "rmse": rmse, "r2": r2, "naive_mae": nmae, "naive_rmse": nrmse}
@@ -168,7 +176,7 @@ def build_backtest(imported: ImportedHistory, artifacts: WS1Artifacts, *, config
                 "fold_id": fold_id, "train_cutoff": pd.Timestamp(origin), "test_start": pd.Timestamp(g["target_date"].min()),
                 "test_end": pd.Timestamp(g["target_date"].max()), "target": target, "mae": fm, "rmse": fr, "r2": f2,
                 "naive_mae": nm, "naive_rmse": nr,
-                "effective_train_size": int((imported.raw["date"] <= pd.Timestamp(origin)).sum()),
+                "effective_train_size": int((imported.history["timestamp"] <= pd.Timestamp(origin)).sum()),
                 "adjustment_count": 0,
             })
             for row in g.itertuples(index=False):
@@ -186,7 +194,7 @@ def build_backtest(imported: ImportedHistory, artifacts: WS1Artifacts, *, config
         run_id=f"backtest-{artifacts.model_id}",
         provenance=Provenance(provider=PROVIDER_NAME, is_mock=False, seed=seed, input_hash=imported.csv_sha256,
                               config_id=config_id, assumptions_id=None),
-        model_family="ws1-ml_core walk-forward (" + ", ".join(sorted(set(artifacts.best_models.values()))) + ")",
+        model_family="ws1-ml_core " + ", ".join(sorted(set(artifacts.best_models.values()))),
         feature_spec_id="ws1-ml_core-relative-features",
         driver_policy_id=driver_policy_id,
         folds=fold_frame,

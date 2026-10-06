@@ -39,7 +39,7 @@ def run(ctx, name, args):
 
 def test_allowlist_matches_documented_tools():
     assert ALLOWED_TOOLS == ("get_baseline", "simulate_strategy", "optimize_strategies", "get_risk_summary",
-                             "get_company_profile", "compare_actions", "get_public_reference")
+                             "get_company_profile", "compare_actions", "get_public_reference", "get_forecast_drivers")
     assert [s.name for s in TOOL_SPECS] == list(ALLOWED_TOOLS)
 
 
@@ -57,6 +57,8 @@ def test_allowlist_matches_documented_tools():
     ("simulate_strategy", {"actions": {"ev_adoption": 0.5}, "final_shares": {"ev_adoption": 0.8}}, "choose one"),
     ("simulate_strategy", {"start_from": "yesterday"}, "start_from"),
     ("optimize_strategies", {"budget_gbp": -1}, ">= 0"),
+    ("get_forecast_drivers", {"top_k": 0}, ">= 1"),
+    ("get_forecast_drivers", {"top_k": 2.5}, "whole number"),
     ("optimize_strategies", {"min_co2_reduction_ratio": 20}, "ratio"),
     ("optimize_strategies", {"endpoint": "http://x"}, "unknown fields"),
     ("get_risk_summary", {"strategy_id": ""}, "nonempty"),
@@ -191,6 +193,15 @@ def test_infeasible_optimization_is_a_valid_result(ctx):
     assert r.status == "ok" and r.data["status"] == "infeasible" and r.data["recommended"] is None
 
 
+def test_infeasible_optimization_says_how_each_goal_could_be_met(ctx):
+    r = run(ctx, "optimize_strategies", {"budget_gbp": 0.0})
+    hints = r.data["how_to_meet_goals"]
+    assert set(hints) == {"budget_gbp_needed", "highest_profit_floor_possible", "deepest_cut_within_budget_and_floor",
+                          "deepest_cut_tried", "note"}
+    assert hints["budget_gbp_needed"] is None or hints["budget_gbp_needed"] > 0
+    assert run(ctx, "optimize_strategies", {}).data.get("how_to_meet_goals") is None  # feasible: nothing to fix
+
+
 def test_invalid_optimize_target_for_zero_baseline_is_validation_error(mock_services, request_ok, analysis):
     zero = analysis.baseline.monthly.assign(scope1_tco2e=0.0, scope2_tco2e=0.0, scope3_tco2e=0.0, total_co2e_tco2e=0.0)
     b = replace(analysis.baseline, monthly=zero, totals={**analysis.baseline.totals, "total_co2e_tco2e": 0.0})
@@ -206,6 +217,30 @@ def test_get_baseline_reports_serialized_totals(ctx):
     r = run(ctx, "get_baseline", {})
     assert r.data["totals"] == {"revenue_gbp": 12e6, "operating_profit_gbp": 1.2e6, "total_co2e_tco2e": 1200.0}
     assert r.data["period"] == "Jan 2027 - Dec 2027" and r.data["is_mock"] is True
+
+
+def test_get_baseline_says_which_model_forecasts_and_how_well(ctx):
+    forecast = run(ctx, "get_baseline", {}).data["forecast"]
+    assert forecast["model"] == "fixture-illustrative"
+    emissions = forecast["accuracy_last_12_months"]["emissions"]
+    # From the fixture backtest: MAE 1.545 vs 0.850 for repeating last year's month.
+    assert emissions == {"average_monthly_miss": 1.5, "simple_repeat_miss": 0.8, "better_than_simple_repeat": False}
+    assert "data_notes" in forecast
+
+
+def test_forecast_drivers_rank_inputs_with_plain_names(ctx):
+    r = run(ctx, "get_forecast_drivers", {"top_k": 2})
+    assert r.status == "ok" and set(r.data["targets"]) == {"emissions", "operating_profit"}
+    top = r.data["targets"]["emissions"]
+    assert len(top["top_inputs"]) == 2 and top["top_inputs"][0]["share_pct"] >= top["top_inputs"][1]["share_pct"]
+    assert {"input", "share_pct", "pushes_forecast"} <= set(top["top_inputs"][0])
+    assert 0 < top["top_k_share_pct"] <= 100
+
+
+def test_forecast_drivers_unavailable_without_shap(request_ok, analysis):
+    services = make_services({"shap": "disabled"})
+    c = AnalysisContext(services, request_ok, analysis.baseline, None, None)
+    assert run(c, "get_forecast_drivers", {}).status == "unavailable"
 
 
 def test_risk_unavailable_when_no_provider(request_ok, analysis):

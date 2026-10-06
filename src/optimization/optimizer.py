@@ -179,17 +179,34 @@ class _SearchProblem(Problem):
 
 
 class _UnitIntervalRepair(Repair):
-    """Explicit candidate repair: clip solver vectors to [0, 1] and count repaired rows."""
+    """Explicit candidate repair: clip solver vectors to [0, 1], zero inactive actions, count repaired rows."""
 
-    def __init__(self) -> None:
+    def __init__(self, inactive: tuple[int, ...] = ()) -> None:
         super().__init__()
+        self.inactive = list(inactive)
         self.repaired_rows = 0
 
     def _do(self, problem: Problem, X: np.ndarray, **kwargs: Any) -> np.ndarray:
         X = np.asarray(X, dtype=np.float64)
         clipped = np.clip(X, 0.0, 1.0)
+        clipped[:, self.inactive] = 0.0
         self.repaired_rows += int(np.count_nonzero((clipped != X).any(axis=1)))
         return clipped
+
+
+def inactive_actions(baseline: BaselineBundle, assumptions: ActionAssumptions, simulator: SimulationFn,
+                     noop: SimulationResult | None = None) -> tuple[str, ...]:
+    """Actions that change nothing for this company (no addressable activity): full
+    implementation returns exactly the no-op metrics. The search keeps them at zero.
+    Costs one simulation per action (plus the no-op when it is not supplied)."""
+    if noop is None:
+        noop = val.validate_simulation_result(simulator(baseline, ActionConfig.noop(), assumptions=assumptions), baseline)
+    inactive = []
+    for name in ACTION_NAMES:
+        full = simulator(baseline, dataclasses.replace(ActionConfig.noop(), **{name: 1.0}), assumptions=assumptions)
+        if val.validate_simulation_result(full, baseline).metrics == noop.metrics:
+            inactive.append(name)
+    return tuple(inactive)
 
 
 def _latin_hypercube(rng: np.random.Generator, n: int, dims: int) -> np.ndarray:
@@ -329,11 +346,14 @@ def optimize_strategies(
 
     registry = _Registry(baseline, constraints, assumptions, simulator)
     problem = _SearchProblem(registry)
-    repair = _UnitIntervalRepair()
-    initial = _initial_population(config)
     try:
         # The no-op is simulated before any solver work; it is counted when the initial population requests it.
         noop = registry.evaluate(ActionConfig.noop(), count_request=False)
+        inactive_names = inactive_actions(baseline, assumptions, simulator, noop=noop.result)
+        inactive = tuple(ACTION_NAMES.index(name) for name in inactive_names)
+        repair = _UnitIntervalRepair(inactive)
+        initial = _initial_population(config)
+        initial[:, list(inactive)] = 0.0
         algorithm = NSGA2(pop_size=config.population_size, sampling=initial, eliminate_duplicates=True, repair=repair)
         algorithm.setup(problem, seed=config.seed, verbose=False)
         termination_reason, generations_completed = _run_search(algorithm, problem, registry, config)
@@ -363,6 +383,8 @@ def optimize_strategies(
         "seed_configuration_count": int(min(len(default_seed_configs()), len(initial))),
         "runtime_seconds": time.perf_counter() - started,
         "termination_reason": termination_reason,
+        "inactive_actions": list(inactive_names),
+        "probe_count": len(ACTION_NAMES),  # one full-action simulation each, outside the evaluation budget
         "feasible_count": int(candidates["feasible"].sum()),
         "pareto_count": len(pareto),
         **_violation_diagnostics(candidates),

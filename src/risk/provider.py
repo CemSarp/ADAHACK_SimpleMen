@@ -27,7 +27,7 @@ __version__ = "ws3-risk-1"
 
 class MonteCarloRiskProvider:
     def __init__(self, uncertainty: UncertaintySpec) -> None:
-        self._uncertainty = uncertainty
+        self.uncertainty = uncertainty
         self.uncertainty_id = uncertainty.uncertainty_id
         self.info = ProviderInfo(
             slot="risk",
@@ -50,7 +50,7 @@ class MonteCarloRiskProvider:
     ) -> RiskResult:
         return evaluate_strategy_risk(
             baseline, action_config, constraints=constraints, assumptions=assumptions,
-            uncertainty=self._uncertainty, config=config, simulator=simulator,
+            uncertainty=self.uncertainty, config=config, simulator=simulator,
         )
 
 

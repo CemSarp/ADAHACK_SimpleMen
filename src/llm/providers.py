@@ -245,7 +245,7 @@ class LMStudioChatProvider(OllamaChatProvider):
 
 _HELP = (
     "I can help with: where your emissions come from, comparing the six actions, explaining the selected "
-    "strategy, showing the baseline forecast, previewing a what-if (for example 'EV share becomes 80%'), finding a "
+    "strategy, showing the baseline forecast and what drives it, previewing a what-if (for example 'EV share becomes 80%'), finding a "
     "plan within a budget (for example 'within a £500k budget'), risk for the selected strategy, and the Wincanton "
     "real-data reference. Tell me which one you want."
 )
@@ -304,7 +304,9 @@ class MockChatProvider:
             return ModelResponse(text="", tool_calls=(ToolCall("compare_actions", {}),))
         if re.search(r"(come from|\bcompany\b|\bprofile\b|\btrend|\bhistory\b|last 12 months)", t):
             return ModelResponse(text="", tool_calls=(ToolCall("get_company_profile", {}),))
-        if re.search(r"\b(baseline|forecast)\b", t):
+        if re.search(r"\b(drives?|drivers?|inputs?)\b", t) and "forecast" in t:
+            return ModelResponse(text="", tool_calls=(ToolCall("get_forecast_drivers", {}),))
+        if re.search(r"\b(baseline|forecast|accura\w*|model)\b", t):
             return ModelResponse(text="", tool_calls=(ToolCall("get_baseline", {}),))
         return ModelResponse(text=_HELP)
 

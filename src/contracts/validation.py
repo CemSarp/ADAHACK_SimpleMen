@@ -326,8 +326,8 @@ def validate_assumptions(a: ActionAssumptions) -> ActionAssumptions:
     )
     for name in ratio_fields:
         require_ratio(f"assumptions.{name}", getattr(a, name))
-    if not math.isclose(a.gas_share + a.ice_fleet_share, 1.0, abs_tol=1e-9):
-        _fail("assumptions.gas_share", "scope1 partition gas_share + ice_fleet_share must equal 1")
+    if a.gas_share + a.ice_fleet_share > 1.0 + 1e-9:  # any remainder is other scope 1, untouched by actions
+        _fail("assumptions.gas_share", "scope1 partition gas_share + ice_fleet_share must not exceed 1")
     s3 = a.travel_share + a.cloud_share + a.supplier_share + a.other_share
     if not math.isclose(s3, 1.0, abs_tol=1e-9):
         _fail("assumptions.travel_share", "scope3 partition shares must sum to 1")

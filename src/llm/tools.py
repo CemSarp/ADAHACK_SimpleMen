@@ -12,7 +12,7 @@ import math
 from typing import Any, Mapping
 
 from src.contracts import validation as val
-from src.contracts.errors import CapabilityUnavailable, CarbonOptError, ContractValidationError
+from src.contracts.errors import CapabilityUnavailable, CarbonOptError, ContractValidationError, ForecastError
 from src.contracts.types import (
     ACTION_NAMES,
     ActionConfig,
@@ -23,14 +23,16 @@ from src.contracts.types import (
     ToolResult,
 )
 from src.integration.services import Services
+from src.optimization import inactive_actions, relaxation_hints
 
 from . import insights
 from .context import AnalysisContext
 from .types import ToolSpec
 
 ALLOWED_TOOLS = ("get_baseline", "simulate_strategy", "optimize_strategies", "get_risk_summary",
-                 "get_company_profile", "compare_actions", "get_public_reference")
+                 "get_company_profile", "compare_actions", "get_public_reference", "get_forecast_drivers")
 MAX_TOOL_EXECUTIONS_PER_MESSAGE = 3
+MAX_TOP_K = 20
 CHAT_MAX_EVALUATIONS = 512
 CHAT_MAX_RISK_TRIALS = 1000
 SHARE_ACTIONS = ("renewable_energy", "ev_adoption")
@@ -45,7 +47,9 @@ _SHOWN_METRICS = (
 TOOL_SPECS: tuple[ToolSpec, ...] = (
     ToolSpec(
         "get_baseline",
-        "Return the business-as-usual forecast totals (emissions in tCO2e, GBP) for the current dashboard baseline.",
+        "Return the business-as-usual forecast totals (emissions in tCO2e, GBP) for the current dashboard baseline, "
+        "which forecasting model made it, how far off it was on the last 12 reported months compared with simply "
+        "repeating last year, and what the data import changed. Use for the forecast, its model or its accuracy.",
         {"type": "object", "properties": {}, "additionalProperties": False},
     ),
     ToolSpec(
@@ -100,10 +104,18 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         "Wincanton plc FY2024 public disclosure: a real UK logistics company used as a SEPARATE reference, not the "
         "dashboard company. Reported energy, emissions by scope and revenue, derived shares, a plain explanation of "
         "Scope 1/2/3, and optionally an electricity-reduction scenario with the GOV.UK 2026 factor "
-        "(electricity_reduction_ratio is a 0-1 ratio, 10% = 0.1). Use for Wincanton, real-world data, scopes, or the "
-        "'Real data and sources' panel.",
+        "(electricity_reduction_ratio is a 0-1 ratio, 10% = 0.1). Use for Wincanton or real-world reference data.",
         {"type": "object", "additionalProperties": False, "properties": {
             "electricity_reduction_ratio": {"type": "number", "minimum": 0, "maximum": 1}}},
+    ),
+    ToolSpec(
+        "get_forecast_drivers",
+        "Which inputs move the emissions and profit forecasts most (SHAP on the forecasting model), with plain names, "
+        "each input's share of the movement and whether it pushes the forecast up or down. Use for 'what drives the "
+        "forecast' or 'why is the forecast high/low'. It explains the forecast, not the action plans.",
+        {"type": "object", "additionalProperties": False, "properties": {
+            "top_k": {"type": "integer", "minimum": 1, "maximum": MAX_TOP_K,
+                      "description": "How many inputs to list per forecast (default 5)."}}},
     ),
 )
 
@@ -153,6 +165,7 @@ def validate_arguments(name: str, arguments: Any) -> dict[str, Any]:
         "get_company_profile": (),
         "compare_actions": (),
         "get_public_reference": ("electricity_reduction_ratio",),
+        "get_forecast_drivers": ("top_k",),
     }[name])
     out: dict[str, Any] = {}
     if name == "simulate_strategy":
@@ -179,6 +192,11 @@ def validate_arguments(name: str, arguments: Any) -> dict[str, Any]:
         if "electricity_reduction_ratio" in args:
             out["electricity_reduction_ratio"] = _number("electricity_reduction_ratio",
                                                          args["electricity_reduction_ratio"], 0.0, 1.0)
+    elif name == "get_forecast_drivers":
+        k = args.get("top_k", 5)
+        if isinstance(k, bool) or not isinstance(k, (int, float)) or not float(k).is_integer():
+            raise ToolArgumentError("top_k must be a whole number")
+        out["top_k"] = int(_number("top_k", k, 1.0, float(MAX_TOP_K)))
     elif name == "get_risk_summary":
         sid = args.get("strategy_id")
         if sid is not None:
@@ -219,6 +237,30 @@ def _metrics(sim: SimulationResult) -> dict[str, float | None]:
     return {k: sim.metrics[k] for k in _SHOWN_METRICS}
 
 
+def _forecast_facts(ctx: AnalysisContext, services: Services) -> dict[str, Any]:
+    """Model name and held-out accuracy from the forecast provider's backtest, plus import notes."""
+    from src.dashboard.presentation import model_name
+
+    try:
+        report = services.forecast.get_backtest(company_id=ctx.baseline.company_id)
+    except CarbonOptError:
+        report = None
+    accuracy, model = {}, ctx.baseline.model_id
+    if report is not None:
+        model = model_name(report.selected_models.get("total_co2e_tco2e", model))
+        for column, label in (("total_co2e_tco2e", "emissions"), ("operating_profit_gbp", "operating_profit")):
+            m = report.aggregate_metrics.get(column) or {}
+            if m.get("mae") is not None and m.get("naive_mae") is not None:
+                accuracy[label] = {"average_monthly_miss": round(float(m["mae"]), 1),
+                                   "simple_repeat_miss": round(float(m["naive_mae"]), 1),
+                                   "better_than_simple_repeat": bool(m["mae"] < m["naive_mae"])}
+    notes = list(getattr(getattr(services.forecast, "imported", None), "transforms", ()))
+    return {"model": model, "accuracy_last_12_months": accuracy or None,
+            "accuracy_units": "emissions in tCO2e per month, operating profit in GBP per month",
+            "simple_repeat_means": "repeating the same month of last year, adjusted for the trend",
+            "data_notes": notes}
+
+
 def _tool_get_baseline(args: dict[str, Any], ctx: AnalysisContext, services: Services) -> dict[str, Any]:
     b = ctx.baseline
     ts = b.monthly["timestamp"]
@@ -226,6 +268,7 @@ def _tool_get_baseline(args: dict[str, Any], ctx: AnalysisContext, services: Ser
         "kind": "baseline", "baseline_id": b.baseline_id, "company_id": b.company_id, "horizon_months": b.horizon_months,
         "period": f"{ts.iloc[0]:%b %Y} - {ts.iloc[-1]:%b %Y}", "model_id": b.model_id, "data_kind": b.data_kind,
         "totals": {k: float(v) for k, v in b.totals.items()},
+        "forecast": _forecast_facts(ctx, services),
         "is_mock": b.provenance.is_mock,
     }
 
@@ -255,6 +298,13 @@ def _tool_simulate(args: dict[str, Any], ctx: AnalysisContext, services: Service
             notes.append(f"Baseline {column} varies by month; the conversion uses the month-1 value.")
     config = val.validate_action_config(ActionConfig.from_mapping(values))
     result = val.validate_simulation_result(services.simulate(baseline, config), baseline)
+    requested = [a for a in ACTION_NAMES if getattr(config, a) > 0]
+    if requested:
+        from src.dashboard.presentation import ACTION_LABELS
+
+        off = inactive_actions(baseline, services.assumptions, services.simulator.simulate)
+        notes += [f"{ACTION_LABELS[a]} has no effect for this company (its data does not report what it acts on), so "
+                  "it changes nothing in this preview." for a in requested if a in off]
     shares = {}
     for action in SHARE_ACTIONS:
         column = "renewable_energy_share" if action == "renewable_energy" else "ev_share"
@@ -297,6 +347,17 @@ def _tool_optimize(args: dict[str, Any], ctx: AnalysisContext, services: Service
         ctx.baseline, constraints, assumptions=services.assumptions, config=capped, simulator=services.simulator.simulate))
     recommendation = val.validate_recommendation(
         services.optimizer.recommend(optimization, tolerance=ctx.request.tolerance), optimization)
+    hints = None
+    if optimization.status != "ok":
+        h = relaxation_hints(optimization.candidates, constraints)
+        hints = {
+            "budget_gbp_needed": None if h["budget_gbp"] is None else round(h["budget_gbp"]),
+            "highest_profit_floor_possible": None if h["min_total_profit_gbp"] is None else round(h["min_total_profit_gbp"]),
+            "deepest_cut_within_budget_and_floor": h["min_co2_reduction_ratio"],
+            "deepest_cut_tried": h["max_reduction_ratio"],
+            "note": ("Each value changes ONE goal and keeps the other two, read from the mixes this search tried. Cuts "
+                     "are 0-1 ratios. A new search with the changed goal may land slightly differently."),
+        }
     recommended = None
     if recommendation.strategy_id is not None:
         sim = optimization.strategies[recommendation.strategy_id]
@@ -307,7 +368,7 @@ def _tool_optimize(args: dict[str, Any], ctx: AnalysisContext, services: Service
                         "min_co2_reduction_ratio": constraints.min_co2_reduction_ratio},
         "constraints_overridden": sorted(args), "evaluated_count": optimization.diagnostics.get("evaluated_count"),
         "max_evaluations_applied": capped.max_evaluations, "pareto_count": len(optimization.pareto),
-        "recommended": recommended, "is_mock": optimization.provenance.is_mock,
+        "recommended": recommended, "how_to_meet_goals": hints, "is_mock": optimization.provenance.is_mock,
         "note": "Preview only: the dashboard analysis and constraints were not changed.",
     }
 
@@ -317,7 +378,7 @@ def _tool_risk(args: dict[str, Any], ctx: AnalysisContext, services: Services) -
         raise CapabilityUnavailable(services.unavailable.get("risk", "no risk provider is bound"))
     sid = args.get("strategy_id") or (ctx.selected.strategy_id if ctx.selected else None)
     if sid is None:
-        raise ToolArgumentError("no strategy is selected; run Optimize and select a strategy first")
+        raise ToolArgumentError("no strategy is selected; press Find plans in the sidebar and select a plan first")
     analysis = ctx.analysis
     risk = analysis.risk_results.get(sid) if analysis is not None else None
     if risk is None:
@@ -339,6 +400,38 @@ def _tool_public_reference(args: dict[str, Any], ctx: AnalysisContext, services:
         raise CapabilityUnavailable(f"public reference data unavailable: {exc}") from exc
 
 
+def _tool_forecast_drivers(args: dict[str, Any], ctx: AnalysisContext, services: Services) -> dict[str, Any]:
+    from src.dashboard.presentation import feature_label, shap_importance
+
+    explanation = ctx.analysis.explanation if ctx.analysis is not None else None
+    if explanation is None:
+        if services.shap is None:
+            raise CapabilityUnavailable(services.unavailable.get("shap", "no forecast explanation provider is bound"))
+        try:
+            explanation = val.validate_explanation(services.shap.explain(ctx.baseline))
+        except ForecastError as exc:  # e.g. the forecast model is not a tree model
+            raise CapabilityUnavailable(f"forecast drivers need a tree forecasting model: {exc}") from exc
+    k = args["top_k"]
+    rows = explanation.contributions
+    targets = {}
+    for column, label in (("total_co2e_tco2e", "emissions"), ("operating_profit_gbp", "operating_profit")):
+        if column not in set(rows["target"]):
+            continue
+        share = shap_importance(explanation, column)
+        push = rows[rows["target"] == column].groupby("feature")["shap_value"].mean()
+        targets[label] = {
+            "top_inputs": [{"input": feature_label(f), "share_pct": round(100 * float(share[f]), 1),
+                            "pushes_forecast": "up" if push[f] >= 0 else "down"} for f in share.index[:k]],
+            "top_k_share_pct": round(100 * float(share.iloc[:k].sum()), 1),
+            "inputs_total": len(share),
+        }
+    return {"kind": "forecast_drivers", "targets": targets,
+            "how_to_read": ("share_pct is the input's share of how much the forecast moves over the next 12 months "
+                            "(mean absolute SHAP value). 'Last reported month' and 'Same month last year' mean recent "
+                            "level and seasonality. This explains the forecast without new actions, not the plans."),
+            "is_mock": explanation.provenance.is_mock}
+
+
 _HANDLERS = {
     "get_baseline": _tool_get_baseline,
     "simulate_strategy": _tool_simulate,
@@ -348,6 +441,7 @@ _HANDLERS = {
                                                                                 services.assumptions),
     "compare_actions": lambda args, ctx, services: insights.compare_actions(ctx.baseline, services),
     "get_public_reference": _tool_public_reference,
+    "get_forecast_drivers": _tool_forecast_drivers,
 }
 
 

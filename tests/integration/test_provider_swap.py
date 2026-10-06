@@ -81,7 +81,7 @@ def test_swap_changes_provenance_not_consumer_code(mock_services, request_ok):
         ser.to_json(bundle)
         sid = bundle.recommendation.strategy_id
         charts.pareto_scatter(bundle.optimization, bundle.baseline, selected_id=sid, recommended_id=sid)
-        charts.monthly_comparison(bundle.baseline, {"selected": bundle.optimization.strategies[sid]})
+        charts.scope_totals(bundle.baseline, {"selected": bundle.optimization.strategies[sid]})
     assert a.providers["simulator"].kind == "behavioral-mock" and b.providers["simulator"].kind == "real"
     assert list(a.optimization.pareto.columns) == list(b.optimization.pareto.columns)
 

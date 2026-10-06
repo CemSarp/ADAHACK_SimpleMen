@@ -25,7 +25,8 @@ A decision-support dashboard that forecasts a company's emissions and profit, si
 
 | | Capability | Detail |
 |---|---|---|
-| 📈 | **Baseline forecast** | 12-month business-as-usual emissions and profit, with a temporal backtest. |
+| 📂 | **Your own data** | Upload any monthly CSV; columns are matched to what the analysis needs, whatever they are called. |
+| 📈 | **Baseline forecast** | 12-month business-as-usual emissions and profit, checked against a simple seasonal repeat. |
 | 🎛️ | **What-if simulator** | Dial six actions between 0% and 100% and see CO₂, profit, spend and net cash change instantly. |
 | 🧬 | **Constrained optimisation** | NSGA-II searches for the emissions/profit Pareto frontier under your budget, profit floor and CO₂ target. |
 | 🎯 | **Recommendation** | Picks one strategy from the frontier with a deterministic policy, or says plainly when nothing is feasible. |
@@ -38,9 +39,9 @@ A decision-support dashboard that forecasts a company's emissions and profit, si
 
 `renewable_energy` · `ev_adoption` · `building_efficiency` · `travel_reduction` · `cloud_efficiency` · `supplier_transition`
 
-Each is a fraction in [0, 1]. The simulator is deterministic and accounts for capex, incremental opex, savings and the interactions between actions.
+Each is a fraction in [0, 1]. The simulator is deterministic and accounts for capex, incremental opex, savings and the interactions between actions. An action whose activity your data does not report (say, a fleet) is switched off and explained, not guessed.
 
-> ⚠️ **All company data is synthetic**, and the action assumptions are illustrative and uncalibrated. The dashboard labels this wherever it matters. Treat results as a demonstration of the method, not as advice.
+> ⚠️ **The demo company's data is synthetic**, and action costs are illustrative and uncalibrated (for uploads they are scaled to your own activity). The dashboard labels this wherever it matters. Treat results as a demonstration of the method, not as advice.
 
 ---
 
@@ -61,7 +62,7 @@ python -m streamlit run app.py
 
 Open <http://localhost:8501>. Add `--server.port 8599` to change the port, or `--server.headless true` to skip opening a browser.
 
-**Try it:** the sidebar uses the configured company defaults (£20,000,000 implementation budget, £30,000,000 cumulative operating profit floor and a 10% CO₂ reduction target). Click **Optimize** to compare feasible plans. Set the budget to £0 to explore the no-recommendation state. The first forecast trains the configured models; later runs reuse saved results.
+**Try it:** the sidebar starts with the demo company's goals (£20m budget, £30m profit floor, 10% CO₂ cut). Press **Find plans** to compare plans, or set the budget to £0 to see the no-plan state. The first load fits a forecast in about 10 seconds; later loads reuse it. Switch **Company data** to **Your data** to upload your own file.
 
 Run `conda activate adahack` in every new terminal.
 
@@ -91,8 +92,10 @@ company. The company ID comes from that file's import mapping.
 Tests inject doubles per slot through `tests.mocks.make_services`; they are not launch
 options. See [Architecture](docs/ARCHITECTURE.md) for how services and the pipeline fit together.
 
-The Model Selection panel compares methods on the historical dataset independently.
-It does not alter the configured planning forecast or its model identity.
+The forecast is a RandomForest (seasonal-naive below 5 years of history) scored against a
+seasonal repeat over the last 12 months. Other models (XGBoost, LightGBM, Prophet) are only run
+when you ask: **Compare forecasting models** in section 1 scores the models you pick on the loaded
+data, and **Forecast with** rebuilds the forecast, plans and drivers with the one you choose.
 
 ---
 
@@ -125,47 +128,52 @@ All providers talk through typed, validated contracts in `src/contracts/`, which
 
 ## 🖥️ The dashboard
 
+One page, read top to bottom like a short report:
+
 | Section | What you see |
 |---|---|
-| Company context and baseline | KPIs and the 12-month baseline |
-| Forecast evaluation | Temporal backtest of the forecast |
-| Optimized strategies | Interactive Pareto frontier, click a point to select it |
-| Selected strategy | KPIs, constraint checks and feasibility badges |
-| Manual what-if | Sliders for each action, using the same simulator |
-| Monthly baseline vs scenarios | Month-by-month emissions and profit |
-| Decision confidence | Uncertainty probabilities, peer comparison, risk preferences and existing forecast explanations when available |
-| Assumptions and export | Expandable action assumptions and costs, plus a full analysis download |
-| Real data and sources | Public reference, official-factor scenario and source links (below) |
+| 1 · Starting point | Next-12-month emissions, revenue and profit, forecast accuracy, history running into the forecast (drag **History shown** to change the period), and an on-demand model comparison |
+| 2 · Plans | The trade-off chart (click a plan), the recommended plan, its figures and action mix, and where its cut comes from by scope. When no plan meets the goals: which single change would (budget, profit floor or CO₂ target), read from the mixes tried |
+| 3 · Your mix | Sliders for the actions your data supports, with the same figures and a goal check |
+| 4 · Confidence | Uncertainty (with how the Monte Carlo trials are drawn), risk appetite, peer comparison and forecast drivers (keep the top *k* inputs), when turned on |
+| 5 · Timing | The cleanest hour on the GB grid for flexible electricity use (saved example offline, live forecast on request) |
+| 6 · Assumptions | The costs, prices and factors behind every number, and a full JSON download |
 
-### Real data and sources (what is real, what is not)
+The sidebar shows what each goal accepts: the budget is £0 or more and stops mattering above the cost
+of every action at full take-up; the profit floor can be any amount (the no-action forecast is shown).
 
-The **Real data and sources** expander is self-contained and never feeds the optimizer:
+### Using your own data
 
-| Item | Label | Source, date |
-|---|---|---|
-| Wincanton FY2024 energy, emissions, revenue (annual totals) | Reported historical, 2023-04-01 to 2024-03-31 | [Wincanton Annual Review 2024](https://win-12731-s3.s3.eu-west-2.amazonaws.com/assets/7317/2796/5575/Wincanton_Annual_Review_2024.pdf), printed pp. 1, 5, 24–25; snapshot `data/public/wincanton_fy2024.json`, retrieved 2026-10-03 |
-| UK electricity factor 0.13096 kgCO2e/kWh | Official factor (ID `7_400_4000_5_1`, row 3066, v1.2) | [GOV.UK conversion factors 2026](https://www.gov.uk/government/publications/greenhouse-gas-reporting-conversion-factors-2026), July-revised flat workbook; `data/public/uk_factors_2026.json` |
-| Electricity-reduction calculator | Scenario: 2026 factor × FY2024 activity; reduction and £0.25/kWh tariff are assumptions | Default 10% → **1,014.74 tCO2e**, gross energy-cost saving before capex/opex |
-| GB grid forecast, one-hour 100 kWh task | Forecast gCO2/kWh (GB average), kgCO2; scheduling illustration only, never added to corporate totals | [Carbon Intensity API](https://carbon-intensity.github.io/api-definitions/) `fw48h` (NESO, CC BY 4.0). Startup shows the **Recorded example** `data/public/grid_forecast_snapshot.json` (fetched 2026-10-03 16:02 UTC) as a historical replay; **Refresh grid forecast** makes one 5 s request (cached 30 min) and only then offers upcoming windows. A failed refresh shows an error and keeps the recorded example |
-| Cloud | Planned | [Cloud Carbon Footprint](https://github.com/cloud-carbon-footprint/cloud-carbon-footprint) is the future method; current cloud figures are illustrative |
+Choose **Your data** under **Company data**, upload a monthly CSV and confirm the suggested column
+matches. **Download an example file** shows the format (`data/sample_upload.csv`: a USD manufacturer
+with no fleet).
 
-Wincanton is a public reference, not a customer. The six-action optimizer still analyses the configured company on synthetic, uncalibrated history and illustrative action economics; nothing in the panel changes its inputs. No network access is needed at startup.
+| Needed | Optional, each unlocks actions |
+|---|---|
+| One row per month, at least 24 months | Electricity (kWh), renewable share → renewable electricity, building efficiency |
+| Revenue | Gas (kWh) → building efficiency (heating) |
+| Operating profit, or operating cost | Fleet distance, EV share, fleet size → EV fleet adoption |
+| Emissions: a total and/or scopes 1–3 (tCO₂e) | Business travel (km), cloud hours → travel and cloud actions |
 
-One-minute demo: open **Real data and sources** → show the report link and 77,485 MWh non-transport electricity → move the reduction slider (10% ≈ 1,014.74 tCO2e) → press **Refresh grid forecast** and say whether the chart is live or recorded → scroll to the optimizer and describe its inputs as illustrative.
+Any currency is converted to GBP at a rate you set. Percent shares, missing months, a missing scope
+(when a total is given) and missing electricity (estimated from scope 2) are handled and listed under
+**What the import does to your data**. Action costs are the demo's, rescaled to your activity
+(`src/actions/calibrate.py`); goals start at about 8% of revenue as budget and 80% of profit as floor.
 
 ---
 
 ## 💬 Assistant (chatbot)
 
-A floating button at the bottom-left opens the assistant. By default it is a **guided assistant** that recognises preset questions and runs dashboard tools offline. For a real model, use a **local LM Studio server** (for example `google/gemma-4-12b`) or a **remote Ollama server**. This repository only contains the client: it downloads no weights and installs no server.
+A floating button at the bottom-right opens the assistant. By default it is a **guided assistant** that recognises preset questions and runs dashboard tools offline. For a real model, use a **local LM Studio server** (for example `google/gemma-4-12b`) or a **remote Ollama server**. This repository only contains the client: it downloads no weights and installs no server.
 
-The model interprets language and explains results. It calls an allow-listed set of tools, and the app validates every call before running it through the same providers as the UI. Besides baseline, what-if, optimization and risk, three read-only data tools give it the facts to answer sensibly, with every number pre-computed so the model never does arithmetic:
+The model interprets language and explains results. It calls an allow-listed set of tools, and the app validates every call before running it through the same providers as the UI. Besides baseline (with the forecast model, its accuracy and import notes), what-if (flags actions that do nothing for this company), optimization (with how to meet the goals when no plan does) and risk, four read-only data tools give it the facts to answer sensibly, with every number pre-computed so the model never does arithmetic:
 
 | Tool | What the model learns |
 |---|---|
 | `get_company_profile` | Last 12 months vs the previous 12 (emissions by scope and share, revenue, profit, margin, intensity), current renewable/EV shares, what is *not* reported, forecast vs history |
 | `compare_actions` | Each of the six actions alone at full adoption, run through the simulator: CO₂ cut, profit effect, outlay and £ per tonne, ranked; flags actions with no effect for this company |
 | `get_public_reference` | Wincanton FY2024 figures, derived shares, a plain Scope 1/2/3 explanation and the GOV.UK electricity scenario, labelled as a separate real company |
+| `get_forecast_drivers` | The top *k* inputs that move the emissions and profit forecasts (SHAP), with plain names, share of the movement and direction |
 
 The app does not auto-load `.env`, so export variables in your shell (copy [`.env.example`](.env.example) as a starting point):
 
@@ -242,16 +250,18 @@ app.py                      Streamlit entry point
 src/
 ├── contracts/              Typed schemas, validation, errors, provider protocols
 ├── integration/            Company services, analysis pipeline and cache keys
-├── actions/                WS2  six-action simulator and financial accounting
+├── forecasting/            WS1  data import, column matching for uploads, forecast and backtest
+├── explainability/         WS1  forecast drivers (SHAP)
+├── actions/                WS2  six-action simulator, accounting, cost scaling for uploads
 ├── optimization/           WS2  NSGA-II, Pareto, constraints, recommendation, CLI
 ├── risk/                   WS3  Monte Carlo risk
 ├── benchmarking/           WS3  offline peer benchmark
-├── dashboard/              WS4  panels, charts, state, chat UI
+├── dashboard/              WS4  page sections, upload step, charts, state, chat UI
 └── llm/                    WS4  chatbot client, tools, mock model
 ml_core/                    WS1  multi-target forecasting pipeline and model comparison
 synthetic_data_generation/  WS1  synthetic company data generator
 config/                     Integration, action assumptions, uncertainty and benchmark settings
-data/                       Company CSV, peer benchmark and public-data snapshots
+data/                       Demo company CSV, example upload, peer benchmark and public-data snapshots
 scripts/                    End-to-end analysis runner
 tests/                      Contract, unit and integration tests, plus mocks and fixtures
 docs/                       Architecture, specifications and chatbot notes

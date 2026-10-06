@@ -75,7 +75,7 @@ class AnalysisContext:
             out["recommended_strategy_id"] = self.analysis.recommendation.strategy_id
         if self.selected is None:
             out["selected_strategy"] = None
-            out["selected_strategy_note"] = ("No strategy is selected yet. The user creates one by pressing Optimize "
+            out["selected_strategy_note"] = ("No strategy is selected yet. The user creates one by pressing Find plans "
                                              "in the sidebar and choosing a plan.")
         else:
             m = self.selected.metrics

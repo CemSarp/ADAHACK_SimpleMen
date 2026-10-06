@@ -34,8 +34,16 @@ def summarize_payload(payload: Mapping[str, Any]) -> str:
     kind = data.get("kind")
     if kind == "baseline":
         t = data["totals"]
-        return (f"Baseline forecast for {data['period']}: emissions {tonnes(t['total_co2e_tco2e'])}, "
+        text = (f"Baseline forecast for {data['period']}: emissions {tonnes(t['total_co2e_tco2e'])}, "
                 f"operating profit {gbp(t['operating_profit_gbp'])}, revenue {gbp(t['revenue_gbp'])}{mock}.")
+        f = data.get("forecast") or {}
+        if f.get("model"):
+            text += f" Model: {f['model']}."
+        e = (f.get("accuracy_last_12_months") or {}).get("emissions")
+        if e:
+            text += (f" On the last 12 months it missed emissions by {e['average_monthly_miss']:,.1f} tCO2e a month on "
+                     f"average, against {e['simple_repeat_miss']:,.1f} for repeating last year.")
+        return text
     if kind == "simulation":
         m = data["metrics"]
         text = (f"Preview for this action mix{mock}: emissions {tonnes(m['total_co2e_tco2e'])} "
@@ -51,8 +59,13 @@ def summarize_payload(payload: Mapping[str, Any]) -> str:
         return text
     if kind == "optimization":
         if data["status"] != "ok":
-            return (f"No feasible plan was found within the search budget for budget {gbp(data['constraints']['budget_gbp'])}"
-                    f"{mock}. Relaxing the budget, profit floor or target may help.")
+            text = f"No plan met all goals with a budget of {gbp(data['constraints']['budget_gbp'])}{mock}."
+            h = data.get("how_to_meet_goals") or {}
+            if h.get("budget_gbp_needed") is not None:
+                text += f" The goals could be met with a budget of about {gbp(h['budget_gbp_needed'])}."
+            if h.get("deepest_cut_within_budget_and_floor") is not None:
+                text += f" Within this budget and profit floor the deepest cut is {pct(h['deepest_cut_within_budget_and_floor'])}."
+            return text
         r = data["recommended"]
         m = r["metrics"]
         return (f"Found {data['pareto_count']} feasible frontier plans{mock}. Recommended action mix: emissions "
@@ -87,6 +100,13 @@ def summarize_payload(payload: Mapping[str, Any]) -> str:
             text += " No effect for this company: " + ", ".join(
                 rows[a]["label"].lower() for a in data["no_effect_for_this_company"]) + "."
         return text + " Action costs are illustrative assumptions."
+    if kind == "forecast_drivers":
+        parts = []
+        for label, t in data["targets"].items():
+            top = t["top_inputs"][0]
+            parts.append(f"{top['input']} moves the {label.replace('_', ' ')} forecast most ({top['share_pct']}% of its "
+                         f"movement, pushing it {top['pushes_forecast']})")
+        return ("; ".join(parts) + ".") if parts else "No forecast drivers are available."
     if kind == "public_reference":
         d = data["derived_from_figures"]
         text = (f"{data['company']} ({data['period']}, a separate real company): transport fuel is "

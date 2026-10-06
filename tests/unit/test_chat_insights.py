@@ -122,3 +122,60 @@ def test_mock_rule_only_when_backends_are_mock():
     assert MOCK_RULE in build_system_message({"is_mock": True})
     assert MOCK_RULE not in build_system_message({"is_mock": False})
     assert "mock backends" not in build_system_message({"is_mock": False})
+
+
+def test_prompt_points_to_find_plans_and_follows_the_data_kind():
+    from src.llm.prompt import build_system_message
+
+    demo = build_system_message({"is_mock": False, "data_kind": "synthetic"})
+    upload = build_system_message({"is_mock": False, "data_kind": "reported"})
+    for prompt in (demo, upload):
+        assert "Find plans" in prompt and "Optimize" not in prompt and "Real data and sources" not in prompt
+        assert "get_forecast_drivers" in prompt
+        assert 'What-if questions do not need a selected plan: without one use start_from="no_action"' in prompt
+        assert '"All of the remaining" or "all remaining" means 1.0 in actions' in prompt
+    assert "synthetic" in demo and "synthetic" not in upload and "uploaded" in upload
+
+
+def test_context_tells_the_model_where_plans_come_from(mock_services, request_ok):
+    from src.llm.context import AnalysisContext
+    from tests.mocks import fixtures
+
+    summary = AnalysisContext(mock_services, request_ok, fixtures.baseline(), None, None).summary()
+    assert "Find plans" in summary["selected_strategy_note"]
+
+
+@pytest.mark.parametrize("question,tool", [
+    ("How accurate is the forecast?", "get_baseline"),
+    ("Which model makes the forecast?", "get_baseline"),
+    ("What drives the emissions forecast?", "get_forecast_drivers"),
+])
+def test_guided_assistant_routes_forecast_questions(question, tool):
+    from src.llm.providers import MockChatProvider
+    from src.llm.types import ChatMessage
+
+    response = MockChatProvider().chat([ChatMessage("user", question)], ())
+    assert [c.name for c in response.tool_calls] == [tool]
+
+
+def test_summaries_cover_drivers_model_accuracy_and_infeasible_hints(ctx):
+    from src.llm.summaries import summarize_payload
+    from src.llm.tools import execute_tool, tool_result_payload
+
+    def text(name, args):
+        return summarize_payload(tool_result_payload(execute_tool(name, args, context=ctx, services=ctx.services)))
+
+    assert "fixture-illustrative" in text("get_baseline", {})
+    drivers = text("get_forecast_drivers", {"top_k": 1})
+    assert "moves the emissions forecast most" in drivers
+    infeasible = text("optimize_strategies", {"budget_gbp": 0.0})
+    assert "No plan" in infeasible and ("budget of about" in infeasible or "deepest cut" in infeasible)
+
+
+def test_a_scope_missing_from_the_data_is_reported_as_not_available(ctx):
+    history = ctx.history.assign(scope3_tco2e=0.0)
+    history["total_co2e_tco2e"] = history["scope1_tco2e"] + history["scope2_tco2e"]
+    p = company_profile(history, ctx.baseline, ctx.services.assumptions)
+    assert "scope 3 emissions" in p["history"]["not_reported_in_data"]
+    assert "scope 3 emissions" not in company_profile(ctx.history, ctx.baseline, ctx.services.assumptions)[
+        "history"]["not_reported_in_data"]

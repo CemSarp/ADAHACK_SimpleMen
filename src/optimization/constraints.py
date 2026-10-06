@@ -9,9 +9,14 @@ epsilon is never permission to exceed a budget materially.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from src.contracts import validation as val
 from src.contracts.errors import ContractValidationError
 from src.contracts.types import ConstraintConfig, ConstraintEvaluation, SimulationResult
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 __version__ = "ws2-constraints-1.1.0"
 
@@ -85,3 +90,24 @@ def evaluate_constraints(result: SimulationResult, constraints: ConstraintConfig
         raw_violations=raw,
         satisfied=satisfied,
     )
+
+
+def relaxation_hints(candidates: pd.DataFrame, constraints: ConstraintConfig) -> dict[str, float | None]:
+    """What the mixes already tried say about loosening one goal while keeping the other two.
+
+    Reads the optimizer's candidate table (``total_cost_gbp``, ``total_profit_gbp``,
+    ``co2_reduction_ratio``); a value is None when no tried mix gets there. These are
+    observed outcomes, not guarantees: a new search with the loosened goal explores again.
+    """
+    cost, profit = candidates["total_cost_gbp"], candidates["total_profit_gbp"]
+    cut = candidates["co2_reduction_ratio"].fillna(0.0)
+    fits = cost <= constraints.budget_gbp + CURRENCY_TOLERANCE_GBP
+    floor = profit >= constraints.min_total_profit_gbp - CURRENCY_TOLERANCE_GBP
+    target = cut >= constraints.min_co2_reduction_ratio - REDUCTION_RATIO_TOLERANCE
+    pick = lambda values, mask, best: float(getattr(values[mask], best)()) if mask.any() else None  # noqa: E731
+    return {
+        "budget_gbp": pick(cost, floor & target, "min"),
+        "min_total_profit_gbp": pick(profit, fits & target, "max"),
+        "min_co2_reduction_ratio": pick(cut, fits & floor, "max"),
+        "max_reduction_ratio": float(cut.max()) if len(cut) else None,
+    }
